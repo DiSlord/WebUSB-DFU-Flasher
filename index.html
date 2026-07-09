@@ -197,6 +197,11 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
  text-align: center;
 }
 
+.git-panel {background: var(--bg); border: 1px solid var(--border);border-radius: 8px; padding: 8px; max-height: 350px; overflow-y: auto; }
+.git-header { display: flex; justify-content: space-between; }
+.git-header b {color: var(--primary);}
+.btn-url {width: 100%; background: var(--connect); }
+.btn-git {background: var(--git);}
 </style>
 </head>
 
@@ -212,6 +217,9 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
     <div id="fileLabel" class="file-label"></div>
     <input type="file" id="fileInput">
   </div>
+  <button id="btnLoadGitHub" class="btn-git">⬇️ Last firmware from GitHub</button>
+  <button id="btnLoadEricHub" class="btn-git">⬇️ Last firmware from tinyDevices</button>
+  <div id="gitPanel" class="git-panel"></div>
   <div id="fileInfo" class="device-info"></div>
   <div id="flashAddressPanel" class="input-group">
     <label>Flash start address:</label>
@@ -1270,6 +1278,81 @@ async function saveAsBin() {
   }
 }
 
+
+
+
+// ==================== GitHub Releases ====================
+
+const proxyUrl = '';//'https://cors-anywhere.herokuapp.com/';
+async function fetchReleases() {
+  gitPanel.innerHTML = '<div>Loading releases...</div>';
+  try {
+    const git = 'DiSlord/NanoVNA-D';
+    //const git = 'erikkaashoek/tinySA';
+    const resp = await fetch(`https://api.github.com/repos/${git}/releases`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const releases = await resp.json();
+    // Draw result
+    let html = '';
+    for (const rel of releases) {
+      const filteredAssets = rel.assets.filter(asset => asset.name.endsWith('.dfu'));
+      if (filteredAssets.length === 0) continue;
+      const date = new Date(rel.published_at).toLocaleDateString();
+      html += `<div class="btn-column">
+      <div class="git-header"><b>📦${rel.tag_name}</b> 📅${date}</div>`;
+      for (const asset of filteredAssets)
+        html += `<button class="btn-url" data-url="${asset.browser_download_url}" data-name="${asset.name}">${asset.name} (${(asset.size/1024).toFixed(1)} KB)</button>`;
+      html += `</div>`;
+    }
+    gitPanel.innerHTML = html;
+  } catch (err) {
+    log(`Error: ${err.message}`, 'e');
+  }
+}
+
+async function fetchFileList() {
+  gitPanel.innerHTML = '<div>Loading releases...</div>';
+  const url = 'http://dfu.tinydevices.org/tinyGTC/DFU/';
+  //const url = 'http://dfu.tinydevices.org/tinySA4/DFU/';
+  try {
+    const response = await fetch(proxyUrl + url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const page = await response.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(page, 'text/html');
+
+    const links = doc.querySelectorAll('a');
+    let html = '<div class="btn-column">';
+    links.forEach(link => {
+      const href = link.getAttribute('href');
+      if (!href || href === '../' || href.startsWith('?')) return;
+      const name = link.textContent.trim().toLowerCase();
+      const ext = name.split('.').pop();
+      const u = new URL(href, url).href;
+      if (file_format.find(f => f.ext === ext))
+      html += `<button class="btn-url" data-url="${u}" data-name="${name}">${name}</button>`;
+    });
+    html += `</div>`;
+    gitPanel.innerHTML = html;
+  } catch (err) {
+    console.error('Error get filelist:', err);
+    throw err;
+  }
+}
+
+async function loadFromURL(btn) {
+  if (!btn) return;
+  const binResponse = await fetch(proxyUrl + btn.dataset.url);
+  log(`Loading ${btn.dataset.name} from github...`, 'i');
+  if (!binResponse.ok) throw new Error(`File load error: ${binResponse.status}`);
+  const buffer = await binResponse.arrayBuffer();
+  const file = new File([buffer], btn.dataset.name, { type: 'application/octet-stream' });
+  await loadFile(file);
+}
+
+btnLoadGitHub.addEventListener('click', fetchReleases);
+btnLoadEricHub.addEventListener('click', fetchFileList);
+gitPanel.addEventListener('click', (e) => loadFromURL(e.target.closest('.btn-url')));
 //================================
 // UI and button processing
 //================================
