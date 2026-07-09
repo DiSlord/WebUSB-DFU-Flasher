@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Capture Screen via COM Port</title>
+<style>
+:root {
+ --bg: #1e1e2e;
+ --surface: #2a2a3e;
+ --border: #3a3a5e;
+ --text: #e0e0f0;
+ --muted: #8888aa;
+ --accent: #7aa2f7;
+ --accent-hover: #89b4fa;
+ --success: #a6e3a1;
+ --error: #f38ba8;
+ --warn: #f9e2af;
+ --radius: 6px;
+ --gap: 8px;
+}
+* { box-sizing: border-box; }
+
+.t { --c: var(--muted); }
+.i { --c: var(--accent); }
+.s { --c: var(--success); }
+.w { --c: var(--warn); }
+.e { --c: var(--error); }
+
+body {
+ margin: 0;
+ padding: 10px;
+ background: var(--bg);
+ color: var(--text);
+ font: 15px/1.4 'Segoe UI', system-ui, sans-serif;
+ min-height: 100vh;
+}
+
+h1 {
+ margin: 0 0 var(--gap);
+ font-size: 20px;
+ color: var(--accent);
+}
+
+.panel {
+ background: var(--surface);
+ border: 1px solid var(--border);
+ border-radius: var(--radius);
+ padding: var(--gap);
+ margin-bottom: var(--gap);
+}
+
+.info {
+ font-size: 12px;
+ text-align: center;
+}
+
+.controls {
+ display: flex;
+ flex-wrap: wrap;
+ gap: 10px;
+ align-items: center;
+ margin-bottom: var(--gap);
+ font-weight: 600;
+}
+
+button {
+ background: var(--border);
+ color: var(--text);
+ border: none;
+ padding: 6px 14px;
+ border-radius: var(--radius);
+ font: inherit;
+ cursor: pointer;
+ transition: background 0.15s;
+}
+button:hover:not(:disabled) { background: #4a4a6e; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+#btnConnection { background: var(--accent); color: #111; }
+#btnConnection[aria-pressed="true"] { background: var(--accent); color: #fff; }
+#btnRefresh[aria-pressed="true"] { background: var(--error); color: #fff; }
+
+label {
+ color: var(--muted);
+ display: flex;
+ align-items: center;
+ gap: 6px;
+}
+
+select {
+ background: var(--bg);
+ color: var(--text);
+ border: 1px solid var(--border);
+ border-radius: 4px;
+ padding: 4px 8px;
+}
+
+.status {
+ font: 14px 'Consolas', monospace;
+ padding: 6px;
+ border-radius: 4px;
+ background: var(--bg);
+ border-left: 5px solid var(--muted);
+}
+.status:is(.t,.e,.w,.i,.s) { border-left-color: var(--c); }
+
+.log {
+ background: #111;
+ color: #aaa;
+ font: 12px 'Consolas', monospace;
+ padding: var(--gap);
+ border-radius: var(--radius);
+ max-height: 200px;
+ overflow-y: auto;
+ white-space: pre-wrap;
+}
+.log :is(.t,.e,.w,.i,.s) { color: var(--c); }
+
+.canvas-wrap {
+ position: relative;
+ display: flex;
+ justify-content: center;
+ align-items: center;
+ min-height: 240px;
+ background:
+  linear-gradient(45deg, #222 25%, transparent 25%),
+  linear-gradient(-45deg, #222 25%, transparent 25%),
+  linear-gradient(45deg, transparent 75%, #222 75%),
+  linear-gradient(-45deg, transparent 75%, #222 75%);
+ background-size: 20px 20px;
+ background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+ background-color: #181825;
+ border-radius: var(--radius);
+ padding: 10px;
+ overflow: auto;
+}
+
+canvas {
+ max-width: none;
+ border: 1px solid var(--border);
+}
+
+.zoomctrl {
+ position: absolute;
+ top: 0;
+ right: 0;
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ gap: 4px;
+ padding: var(--gap);
+ font-size: 14px;
+ opacity: 0.4;
+}
+.zoomctrl:hover { opacity: 1; }
+.zoomctrl button {
+ padding: 4px 10px;
+ min-width: 32px;
+}
+
+#zoomSlider {
+ direction: rtl;
+ appearance: slider-vertical;
+ writing-mode: vertical-lr;
+ width: 4px;
+ height: 120px;
+ background: var(--border);
+ cursor: pointer;
+}
+
+</style>
+</head>
+<body>
+
+<h1>📷 Screen capture</h1>
+<div class="panel">
+ <div class="controls">
+  <button id="btnConnection">Connect</button>
+  <label>Baud:<select id="baudRate"></select></label>
+  <label>Format:
+   <select id="formatSel">
+    <option value="SCR16">RGB565</option>
+    <option value="SCR8" selected>RLE8</option>
+   </select>
+  </label>
+  <button id="btnCapture" disabled="disabled">Capture</button>
+  <button id="btnRefresh" disabled="disabled">🔄 Refresh</button>
+  <button id="btnCopy" disabled="disabled">📋 Copy</button>
+  <button id="btnDownload" disabled="disabled">💾 Download PNG</button>
+  <label>Pixelated:<input type="checkbox" onchange="canvas.style.imageRendering = this.checked ? 'pixelated' : 'auto';"></label>
+ </div>
+ <div id="status" class="status">No connection</div>
+</div>
+
+<div class="panel">
+ <div class="canvas-wrap">
+  <div class="zoomctrl">
+   <button id="btnZoomIn">+</button>
+   <input type="range" id="zoomSlider" min="10" max="300" value="100" step="10">
+   <button id="btnZoomOut">−</button>
+   <div id="zoom">100%</div>
+  </label>
+  </div>
+  <canvas id="canvas" width="320" height="240"></canvas>
+ </div>
+</div>
+
+<div class="panel">
+ <div class="log" id="log"></div>
+</div>
+<div class="info">Screen capture v2.0 ©️2019-2026 DiSlord</div>
+
+<script>
+(() => {
+'use strict';
+
+const $ = id => document.getElementById(id);
+const btnConnection = $('btnConnection');
+const btnCapture = $('btnCapture');
+const btnCopy = $('btnCopy');
+const btnDownload = $('btnDownload');
+const baudSel = $('baudRate');
+const formatSel = $('formatSel');
+const statusEl = $('status');
+const canvas = $('canvas');
+const ctx = canvas.getContext('2d');
+const logEl = $('log');
+const btnZoomOut = $('btnZoomOut');
+const btnZoomIn = $('btnZoomIn');
+const zoomSlider = $('zoomSlider');
+const zoomValue = $('zoom');
+
+let _serialIO = null;
+
+// Utils
+function applyZoom() {
+  const zoom = zoomSlider.value / 100;
+  canvas.style.width = (canvas.width * zoom) + 'px';
+  canvas.style.height = (canvas.height * zoom) + 'px';
+  zoomValue.textContent = zoomSlider.value  + '%';
+}
+
+function getXY(e) {
+  const rect = canvas.getBoundingClientRect();
+  let x = Math.floor((e.clientX - rect.left) * canvas.width / rect.width);
+  let y = Math.floor((e.clientY - rect.top) * canvas.height / rect.height);
+  return {x,y};
+}
+
+function log(msg, cls = '', status = false) {
+  const time = new Date().toISOString().slice(11, 23); // "14:32:07.482" UTC
+  logEl.insertAdjacentHTML('beforeend', `<div><span class="t">[${time}]</span> <span class="${cls}">${msg}</span></div>`);
+  logEl.scrollTop = logEl.scrollHeight;
+  if (status) setStatus(msg, cls);
+}
+
+function setStatus(msg, cls = '') {
+  statusEl.textContent = msg;
+  statusEl.className = 'status ' + cls;
+}
+
+function delay(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+// Connection and exchange
+class SerialIO {
+  constructor() {
+    this.port = null;
+    this.reader = null;
+    this.writer = null;
+    this.chunks = [];
+    this.totalSize = 0;
+    this.closed = false;
+    this.pending = null;
+  }
+
+  async open(port, baud) {
+    this.port = port;
+    await this.port.open({ baudRate: baud, dataBits: 8, stopBits: 1, parity: 'none' });
+    this.reader = this.port.readable.getReader();
+    this.writer = this.port.writable.getWriter();
+    this._bgLoop();
+    await delay(100);
+    this.flush();
+  }
+
+  async close() {
+    if (!this.port) return;
+    this.closed = true;
+    this._settle(new Error('Connection closed'));
+    
+    if (this.reader) {
+      await this.reader.cancel().catch(() => {});
+      this.reader.releaseLock();
+      this.reader = null;
+    }
+    if (this.writer) {
+      this.writer.releaseLock();
+      this.writer = null;
+    }
+    await this.port.close().catch(() => {});
+    this.port = null;
+    this.chunks = [];
+    this.totalSize = 0;
+  }
+
+  async _bgLoop() {
+    try {
+      while (this.reader) {
+        const { value, done } = await this.reader.read();
+        if (done) {
+          this.closed = true;
+          this._settle(new Error('Read stream closed'));
+          return;
+        }
+        if (value?.byteLength > 0) {
+          this.chunks.push(value);
+          this.totalSize += value.byteLength;
+          this._settle();
+        }
+      }
+    } catch (e) {
+      this.closed = true;
+      this._settle(e);
+    }
+  }
+
+  read(n, timeoutMs = 200) {
+    if (this.totalSize >= n) return Promise.resolve(this._takeBytes(n));
+    if (this.closed) return Promise.reject(new Error('Read stream closed'));
+
+    return new Promise((resolve, reject) => {
+      const pendingObj = { n, resolve, reject };
+      const timer = setTimeout(() => {
+        if (this.pending === pendingObj) {
+          this.pending = null;
+          reject(new Error(`Timeout: have ${this.totalSize} / ${n} bytes`));
+        }
+      }, timeoutMs);
+      pendingObj.timer = timer;
+      this.pending = pendingObj;
+    });
+  }
+
+  async write(bytes, logdata = true) {
+    if (logdata) log(`> ${bytes.map(b => b.toString(16).toUpperCase().padStart(2,'0')).join(' ')}`, 'i');
+    await this.writer.write(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+  }
+
+  async transfer(bytes, n, timeoutMs = 200) {
+    await this.write(bytes);
+    return this.read(n, timeoutMs);
+  }
+
+  async readstr(timeoutMs = 200) {
+    let buffer = '';
+    while (true) {
+      const byte = await this.read(1, timeoutMs);
+      buffer += String.fromCharCode(byte[0]);
+      if (buffer.endsWith('\r\n')) return buffer.slice(0, -2);
+      if (buffer.endsWith('ch> ') || buffer.endsWith('> ')) return null;
+      if (buffer.length > 512) buffer = ''; // reset
+    }
+  }
+
+  async send(text, log_data = true) {
+    const bytes = new TextEncoder().encode(text + '\r');
+    if (log_data) log(`> ${text}`, 'i');
+    await this.writer.write(bytes);
+  }
+
+  flush() {
+    this.chunks = [];
+    this.totalSize = 0;
+  }
+
+  _takeBytes(n) {
+    const result = new Uint8Array(n);
+    let offset = 0, remaining = n;
+    while (remaining > 0) {
+      const chunk = this.chunks[0];
+      const avail = chunk.byteLength;
+      if (avail <= remaining) {
+        result.set(chunk, offset);
+        offset += avail;
+        remaining -= avail;
+        this.totalSize -= avail;
+        this.chunks.shift();
+      } else {
+        result.set(chunk.subarray(0, remaining), offset);
+        this.chunks[0] = chunk.subarray(remaining);
+        this.totalSize -= remaining;
+        remaining = 0;
+      }
+    }
+    return result;
+  }
+
+  _settle(error) {
+    const p = this.pending;
+    if (!p || (!error && this.totalSize < p.n)) return;
+    this.pending = null;
+    clearTimeout(p.timer);
+    if (error) p.reject(error);
+    else try {p.resolve(this._takeBytes(p.n));} catch (e) {p.reject(e);}
+  }
+}
+
+async function connect() {
+  if (!('serial' in navigator)) {
+    setStatus('Web Serial API not supported. Use Chrome/Firefox/Edge.', 'e');
+    return;
+  }
+  try {
+    const port = await navigator.serial.requestPort();
+    const baud = parseInt(baudSel.value, 10);
+    _serialIO = new SerialIO();
+    await _serialIO.open(port, baud);
+    log(`Connected, baud=${baud}`, 's', true);
+    await queryVersion();
+    updateUI();
+  } catch (e) {
+    await disconnect();
+    log('Connect error: ' + e.message, 'e', true);
+  }
+}
+
+async function disconnect() {
+  await _serialIO?.close()
+  _serialIO = null;
+  log('Disconnected', 'i', true);
+  updateUI();
+}
+
+async function connection() {
+  _serialIO ? disconnect() : connect();
+}
+
+async function readU16LE() {
+  const b = await _serialIO.read(2);
+  return b[0] | (b[1] << 8);
+}
+
+// Capture functions
+function RGB565toA888(rgb565, BE = false) {
+  if (BE) rgb565 = (rgb565>>8)|(rgb565<<8);
+  const r = ((rgb565 >> 11) & 0x1F) * 255 / 31;
+  const g = ((rgb565 >>  5) & 0x3F) * 255 / 63;
+  const b = ((rgb565 >>  0) & 0x1F) * 255 / 31;
+  const a = 255;
+  return (a << 24) | (b << 16) | (g << 8) | r;
+}
+
+async function captureRGB565(width, height, pixels, BE) {
+  const rowBytes = width * 2;
+  const totalBytes = rowBytes * height;
+  for (let y = 0; y < height; y++) {
+    const rowChunk = await _serialIO.read(rowBytes, 1000);
+    for (let x = 0, dst = y * width; x < rowBytes; x+= 2)
+      pixels[dst++] = RGB565toA888((rowChunk[x] << 8) | rowChunk[x+1], BE);
+    setStatus(`Read: ${((y + 1) * rowBytes / 1024).toFixed(0)} / ${(totalBytes / 1024).toFixed(0)} KB`);
+  }
+  return totalBytes;
+}
+
+function unpackBits(out, rle, width) {
+  let x = 0, j = 0;
+  while (x < width && j < rle.length) {
+    const count = rle[j++];
+    if (count < 128) {
+      const n = 1 + count;
+      for (let k = 0; k < n && x < width && j < rle.length; k++) out[x++] = rle[j++];
+    } else if (j < rle.length) {
+      const n = 257 - count, idx = rle[j++];
+      for (let k = 0; k < n && x < width; k++) out[x++] = idx;
+    }
+  }
+  if (x < width) log(`Warning: unpacked only ${x} of ${width} pixels`, 't');
+}
+
+async function captureRLE8(width, height, pixels) {
+  const pSize = await readU16LE();
+  if (pSize === 0 || pSize > 512 || (pSize & 1) !== 0) throw new Error(`Palette size error: ${pSize} bytes`);
+
+  const pCount = pSize / 2;
+  log(`Palette: ${pCount} colors`, 'i');
+
+  let totalRead = pSize + 2;
+  const palBuf = await _serialIO.read(pSize);
+  const paletteRGB = new Uint32Array(pCount);
+  const indices = new Uint8Array(width);
+
+  for (let i = 0; i < pCount; i++) // Read palette
+    paletteRGB[i] = RGB565toA888((palBuf[i*2] << 8) | palBuf[i*2+1]);
+
+  for (let y = 0; y < height; y++) {
+    const rle_size = await readU16LE();
+    if (rle_size === 0 || rle_size > width * 2 + 128) throw new Error(`Size error ${y}: ${rle_size} bytes`);
+    const rle_data = await _serialIO.read(rle_size);
+    totalRead += rle_size + 2;
+
+    unpackBits(indices, rle_data, width);
+    for (let x = 0, dst = y * width; x < width; x++) {
+      const idx = indices[x];
+      pixels[dst++] = idx < pCount ? paletteRGB[idx] : 0xFF000000;
+    }
+    setStatus(`Row ${y + 1} / ${height}`);
+  }
+  return totalRead;
+}
+
+// Set canvas width, height, return image and this image pixel array
+function prepareCanvas(width, height) {
+  if (width === 0 || width > 4096 || height === 0 || height > 4096) throw new Error(`Width or Height error: ${width}x${height}`);
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
+  applyZoom();
+  const imgData = ctx.createImageData(width, height);
+  const pixels = new Uint32Array(imgData.data.buffer);
+  return {imgData, pixels};
+}
+
+async function captureV2() {
+  const COMMANDS = {
+   'SCR16': [0x20, 0xEE, 0x00],
+   'SCR8':  [0x20, 0xEE, 0x01]
+  };
+  const cmd = COMMANDS[formatSel.value];
+  if (!cmd) throw new Error('Command error: ' + formatSel.value);
+  // Send capture command and read header
+  const header = await _serialIO.transfer(cmd, 5);
+  const width = header[0] | (header[1] << 8);
+  const height = header[2] | (header[3] << 8);
+  const pixelFormat = header[4];
+  log(`Header: ${width}x${height} ${pixelFormat}bpp`, 'i');
+  const {imgData, pixels} = prepareCanvas(width, height);
+  let totalBytes = 0;
+       if (pixelFormat === 16) totalBytes = await captureRGB565(width, height, pixels, 0);
+  else if (pixelFormat ===  8) totalBytes = await captureRLE8(width, height, pixels);
+  else throw new Error(`Unsupported format: ${pixelFormat}`);
+  log(`Read ${totalBytes} bytes...`, 'i');
+  ctx.putImageData(imgData, 0, 0);
+  setStatus(`Capture: ${width}x${height} ${pixelFormat}bpp`, 'i');
+}
+
+let v1 = null;
+async function captureV1() {
+  await _serialIO.send('capture');
+  const skip = await _serialIO.read(9); // Skip echo 'capture\r\n'
+  const width = v1.w;
+  const height = v1.h;
+  const pixelFormat = 16;
+  log(`Header: ${width}x${height} ${pixelFormat}bpp`, 'i');
+  const {imgData, pixels} = prepareCanvas(width, height);
+  await captureRGB565(width, height, pixels, v1.s);
+  ctx.putImageData(imgData, 0, 0);
+  setStatus(`Capture: ${width}x${height} ${pixelFormat}bpp`, 'i');
+}
+
+async function capture() {
+  if (!_serialIO) {log('Not connected', 'e', true); return;}
+  btnRefresh.disabled = btnCapture.disabled = true;
+  btnCopy.disabled = btnDownload.disabled = true;
+  const t0 = performance.now();
+  try {
+    log('Start capture...', 'i');
+    _serialIO.flush();
+    if (v1) await captureV1();
+    else    await captureV2();
+    log(`Done ${((performance.now() - t0) / 1000).toFixed(3)} seconds`, 's');
+    btnCopy.disabled = btnDownload.disabled = false;
+  } catch (e) {
+    log('Capture error: ' + e.message, 'e', true);
+  } finally {
+    updateUI();
+  }
+}
+
+// Detect device type
+const v1_list = {
+ 'SV6301A':     {name: 'SV6301A',     w:1024, h: 600, s: 1, r: 0},
+ 'SV4401A':     {name: 'SV4401A',     w:1024, h: 600, s: 1, r: 0},
+ 'NanoVNA-F':   {name: 'NanoVNA-Fx',  w: 800, h: 480, s: 1, r: 0},
+ 'tinyPFA':     {name: 'tinyPFA',     w: 480, h: 320, s: 0, r: 1},
+ 'NanoVNA-H 4': {name: 'NanoVNA-H 4', w: 480, h: 320, s: 0, r: 1},
+ 'NanoVNA':     {name: 'NanoVNA',     w: 320, h: 240, s: 0, r: 1},
+ 'tinyGTC':     {name: 'tinyGTC',     w: 480, h: 320, s: 0, r: 2},
+ 'tinySA ULTRA':{name: 'tinySA ULTRA',w: 480, h: 320, s: 0, r: 1},
+ 'tinySA':      {name: 'tinySA',      w: 320, h: 240, s: 0, r: 1},
+};
+
+const v2_list = [
+ { board: 2, major:   2, minor: 2, name: 'LiteVNA' },
+ { board: 2, major:   1, minor: 2, name: 'V2' },
+ { board: 3, major:   1, minor: 2, name: 'V2Plus' },
+ { board: 4, major:   1, minor: 2, name: 'V2Plus4' },
+ { board: 0, major: 255, minor: 0, name: 'Bootload mode' },
+];
+
+async function queryVersion() {
+  let name = null, line = null;
+  v1 = null;
+  log('Querying device version...', 'i');
+  _serialIO.flush();
+  const id = await _serialIO.transfer([0x0D], 1); // Send 0x0D and wait answer
+  if (id[0] === 0x32) { // V2 always answer '2'
+    log('Get: 0x32 (Protocol v2)', 's');
+    // Ask device version registers
+    const ver = await _serialIO.transfer([0x10, 0xF0, 0x10, 0xF1, 0x10, 0xF2, 0x10, 0xF3, 0x10, 0xF4], 5);
+    const device = v2_list.find(d => d.board === ver[2] && d.major === ver[3] && d.minor === ver[4]);
+    const versionStr = `${ver[0]}, Protocol: ${ver[1]}, Board: ${ver[2]}, FW: ${ver[3]}.${ver[4]}`;
+    name = device ? device.name : versionStr;
+  } else { // V1 devices echo or text
+    await delay(100);
+    _serialIO.flush();
+    await _serialIO.send('info');
+    while ((line = await _serialIO.readstr()) !== null) { // Parse answer lines
+      log(`${line}`, 'i');
+      if (!v1) v1 = v1_list[Object.keys(v1_list).find(k => line.includes(k))]; // Try find device name in answer
+    }
+    if (v1) name = v1.name;
+  }
+  name ? log(`Device: ${name}`, 's') : log(`Invalid response`, 'e');
+}
+
+// Copy / Download
+async function copyToCliboard() {
+  try {
+    await navigator.clipboard.write([new ClipboardItem({'image/png': await new Promise(r => canvas.toBlob(r, 'image/png'))})]);
+    log('Copied to clipboard', 's', true);
+  } catch (e) {
+    log('Copy error: ' + e.message, 'e', true);
+  }
+}
+
+function downloadPNG() {
+  canvas.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `screen_${ts}.png`;
+    a.click();
+    log('PNG saved', 's', true);
+  }, 'image/png');
+}
+
+// Refresh functional
+const btnRefresh = $('btnRefresh');
+let refreshMode = false;
+
+const tmpCanvas = document.createElement('canvas');
+const tmpCtx = tmpCanvas.getContext('2d');
+function putImageRotated(imgData, x, y) {
+  const w = imgData.width, h = imgData.height;
+  if (tmpCanvas.width !== w || tmpCanvas.height !== h) {
+    tmpCanvas.width = w;
+    tmpCanvas.height = h;
+  }
+  tmpCtx.putImageData(imgData, 0, 0);
+  ctx.setTransform(0, -1, 1, 0, y, canvas.height - x);
+  ctx.drawImage(tmpCanvas, 0, 0);
+  ctx.resetTransform();
+}
+
+async function refreshStop() {
+  if (!refreshMode) return;
+  refreshMode = false;
+  await _serialIO.send('refresh off');
+  log('Refresh mode disabled', 's');
+  updateUI();
+}
+
+function decodeGTCWord(word) {
+  const n = ((word&0xe000)>>9)|((word&0x0300)>>6)|((word & 0x0018) >> 3);
+  return { n, color: RGB565toA888(word&~0xe318, true) };
+}
+
+async function readRHeader() {
+  const header = await _serialIO.read(8, 1000);
+  const x = header[0] | (header[1] << 8);
+  const y = header[2] | (header[3] << 8);
+  const w = header[4] | (header[5] << 8);
+  const h = header[6] | (header[7] << 8);
+  return {x,y,w,h};
+}
+
+async function refreshLoop() {
+  if (!_serialIO || !v1) return;
+  refreshMode = true;
+  updateUI();
+  if (v1.r == 1) await _serialIO.send('capture');
+  await _serialIO.send('refresh on');
+  let flip = 0x20, cmask = v1.r == 1 ? 0xFFFF : ~0xe318;
+  while (refreshMode && _serialIO) {
+    try {
+      let headerStr = await _serialIO.readstr(5000);
+      if (headerStr === 'bulk') {
+        const {x,y,w,h} = await readRHeader();
+        const imgData = ctx.createImageData(w, h);
+        const size = w * h;
+        const pixels = new Uint32Array(imgData.data.buffer);
+        if (v1.r == 1) { // NanoVNA / tinySA
+          const rowChunk = await _serialIO.read(size * 2, 1000);
+          for (let dst = 0, src = 0; dst < size; dst++)
+            pixels[dst] = RGB565toA888((rowChunk[src++] << 8) | rowChunk[src++]);
+        } else { // tinyGTC
+          for (let dst = 0; dst < size;) {
+            const {n, color} = decodeGTCWord(await readU16LE());
+            pixels.fill(color, dst, dst = Math.min(size, dst + n + 1));
+          }
+        }
+        if (flip & 0x20) ctx.putImageData(imgData, x, y);
+        else             putImageRotated(imgData, x, y);
+      } else if (headerStr === 'fill') {
+        const {x,y,w,h} = await readRHeader();
+        const c = RGB565toA888(await readU16LE() & cmask, true);
+        ctx.fillStyle = `rgb(${(c>>0)&0xFF},${(c>>8)&0xFF},${(c>>16)&0xFF})`;
+        ctx.fillRect(x, y, w, h);
+      } else if (headerStr === 'flip') {
+        const {x,y,w,h} = await readRHeader();
+        flip = await readU16LE();
+      } else if (headerStr === 'capture') {
+        const {imgData, pixels} = prepareCanvas(v1.w, v1.h);
+        await captureRGB565(v1.w, v1.h, pixels, v1.s);
+        ctx.putImageData(imgData, 0, 0);
+        btnCopy.disabled = btnDownload.disabled = false;
+        log('Refresh mode enabled', 's', true);
+      } else if (!headerStr || headerStr === '> ' || headerStr === 'ch> ') {
+      } //else log(headerStr);
+    } catch (e) {
+      if (e.message?.includes('Timeout')) continue;
+      break;
+    }
+  }
+  refreshStop();
+}
+
+async function toggleRefresh() {
+  if (!refreshMode) refreshLoop();
+  else              refreshStop();
+}
+
+// Update UI buttons depend from connection
+function updateUI() {
+  const state = !!_serialIO;
+  btnConnection.textContent = state ? 'Disconnect' : 'Connect';
+  btnConnection.ariaPressed = state;
+  btnCapture.disabled = !state || refreshMode;
+  baudSel.disabled = state;
+
+  btnRefresh.disabled = !state || !v1 || v1.r == 0;
+  btnRefresh.textContent = refreshMode ? '🔄 Stop Refresh' : '🔄 Refresh';
+  btnRefresh.ariaPressed = refreshMode;
+}
+
+let mouseDown = false, mouseMove = false;
+async function sendXY(e, down, wait = 0) {
+  if (!refreshMode || !_serialIO) return;
+  mouseDown = down;
+  const {x,y} = getXY(e);
+  await _serialIO.send(`${down ? 'touch' : 'release'} ${x} ${y}`, false);
+  if (wait) await delay(wait);
+}
+
+// Start code
+btnConnection.addEventListener('click', connection);
+
+btnCapture.addEventListener('click', capture);
+btnCopy.addEventListener('click', copyToCliboard);
+btnDownload.addEventListener('click', downloadPNG);
+
+zoomSlider.addEventListener('input', () => {applyZoom();});
+btnZoomOut.addEventListener('click',() => {zoomSlider.value = +zoomSlider.value - 10; applyZoom();});
+btnZoomIn.addEventListener('click', () => {zoomSlider.value = +zoomSlider.value + 10; applyZoom();});
+
+canvas.addEventListener('mousedown', async (e) => {await sendXY(e,true)});
+canvas.addEventListener('mouseup', async (e) => {await sendXY(e,false)});
+canvas.addEventListener('mousemove', async (e) => {
+  if (mouseMove || !mouseDown || v1?.r == 2) return;
+  mouseMove = true;
+  await sendXY(e,true, 50);
+  mouseMove = false;
+});
+btnRefresh.addEventListener('click', toggleRefresh);
+
+// External event (on device disconnect)
+if ('serial' in navigator)
+  navigator.serial.addEventListener('disconnect', e => {if (e.target === _serialIO?.port) disconnect();});
+
+const baudRates = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 1000000, 2000000, 3000000];
+baudSel.innerHTML = baudRates.map(rate => `<option value="${rate}"${rate === 115200 ? ' selected' : ''}>${rate}</option>`).join('');
+
+log('Ready. Press "Connect" and select device COM-port.', 'i');
+})();
+</script>
+
+</body>
+</html>

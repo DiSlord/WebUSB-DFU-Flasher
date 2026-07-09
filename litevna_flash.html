@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LiteVNA Firmware Updater</title>
+<style>
+ :root {
+  --bg: #1e1e2e;
+  --surface: #2a2a3e;
+  --border: #3a3a5e;
+  --text: #e0e0f0;
+  --muted: #8888aa;
+  --accent: #7aa2f7;
+  --accent-hover: #89b4fa;
+  --success: #a6e3a1;
+  --error: #f38ba8;
+  --warn: #f9e2af;
+ }
+ * { box-sizing: border-box; }
+
+ .t { --c: var(--muted); }
+ .i { --c: var(--accent); }
+ .s { --c: var(--success); }
+ .w { --c: var(--warn); }
+ .e { --c: var(--error); }
+
+ body {
+  margin: 0;
+  padding: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  min-height: 100vh;
+ }
+ h1 {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--accent);
+ }
+ .panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+ }
+ .info {
+  font-size: 10px;
+  text-align: center;
+ }
+ .controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+ }
+ button {
+  background: var(--border);
+  color: var(--text);
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+ }
+ button:hover:not(:disabled) { background: #4a4a6e; }
+ button:disabled { opacity: 0.4; cursor: not-allowed; }
+ #btnConnection { background: var(--accent); color: #111; }
+ #btnConnection[pressed="true"] { background: var(--accent); color: #fff;}
+ label {
+  font-size: 13px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+ }
+ select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px;
+  font-size: 13px;
+ }
+ input[type="file"] {
+  font-size: 13px;
+  color: var(--text);
+ }
+ .status {
+  font-size: 13px;
+  padding: 6px;
+  border-radius: 4px;
+  background: var(--bg);
+  border-left: 5px solid var(--muted);
+  margin-top: 10px;
+ }
+ .status:is(.t,.e,.w,.i,.s) { border-left-color: var(--c); }
+
+ .log {
+  background: #111;
+  color: #aaa;
+  font-family: 'Consolas', monospace;
+  font-size: 12px;
+  padding: 6px;
+  border-radius: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+ }
+ .log :is(.t,.e,.w,.i,.s) { color: var(--c); }
+
+ .progress-bar {
+  width: 100%;
+  height: 20px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 10px;
+  position: relative;
+ }
+ .progress-fill {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  transition: width 0.2s;
+ }
+ .progress-text {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+ }
+</style>
+</head>
+<body>
+
+<h1>⚡ LiteVNA Firmware Updater</h1>
+<div class="panel">
+ <div class="controls">
+  <button id="btnConnection">Connect</button>
+  <label>Baud:<select id="baudRate"></select></label>
+  <input type="file" id="firmwareFile" accept=".bin">
+  <button id="btnFlash" disabled>⚡ Flash Firmware</button>
+ </div>
+ <div class="progress-bar">
+  <div class="progress-fill" id="progressFill"></div>
+  <div class="progress-text" id="progressText">0%</div>
+ </div>
+ <div id="status" class="status">No connection</div>
+</div>
+
+<div class="panel">
+  <div class="log" id="log"></div>
+</div>
+<div class="info">LiteVNA Firmware Updater v1.0 ©️2019-2026 DiSlord</div>
+
+<script>
+(() => {
+'use strict';
+
+const $ = id => document.getElementById(id);
+const btnConnection = $('btnConnection');
+const btnFlash = $('btnFlash');
+const baudSel = $('baudRate');
+const firmwareFile = $('firmwareFile');
+const statusEl = $('status');
+const logEl = $('log');
+const progressFill = $('progressFill');
+const progressText = $('progressText');
+
+let _serialIO = null;
+let firmwareBuffer = null;
+
+function log(msg, cls = '', status = false) {
+  const time = new Date().toISOString().slice(11, 23); // "14:32:07.482" UTC
+  logEl.insertAdjacentHTML('beforeend', `<div><span class="t">[${time}]</span> <span class="${cls}">${msg}</span></div>`);
+  logEl.scrollTop = logEl.scrollHeight;
+  if (status) setStatus(msg, cls);
+}
+
+function setStatus(msg, cls = '') {
+  statusEl.textContent = msg;
+  statusEl.className = 'status ' + cls;
+}
+
+function setProgress(pct, text) {
+  progressFill.style.width = pct + '%';
+  progressText.textContent = text || (pct.toFixed(1) + '%');
+}
+
+function delay(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+class SerialIO {
+  constructor() {
+    this.port = null;
+    this.reader = null;
+    this.writer = null;
+    this.chunks = [];
+    this.totalSize = 0;
+    this.closed = false;
+    this.pending = null;
+  }
+
+  async open(port, baud) {
+    this.port = port;
+    await this.port.open({ baudRate: baud, dataBits: 8, stopBits: 1, parity: 'none' });
+    this.reader = this.port.readable.getReader();
+    this.writer = this.port.writable.getWriter();
+    this._bgLoop();
+    await delay(100);
+    this.flush();
+  }
+
+  async close() {
+    if (!this.port) return;
+    this.closed = true;
+    this._settle(new Error('Connection closed'));
+    
+    if (this.reader) {
+      await this.reader.cancel().catch(() => {});
+      this.reader.releaseLock();
+      this.reader = null;
+    }
+    if (this.writer) {
+      this.writer.releaseLock();
+      this.writer = null;
+    }
+    await this.port.close().catch(() => {});
+    this.port = null;
+    this.chunks = [];
+    this.totalSize = 0;
+  }
+
+  async _bgLoop() {
+    try {
+      while (this.reader) {
+        const { value, done } = await this.reader.read();
+        if (done) {
+          this.closed = true;
+          this._settle(new Error('Read stream closed'));
+          return;
+        }
+        if (value?.byteLength > 0) {
+          this.chunks.push(value);
+          this.totalSize += value.byteLength;
+          this._settle();
+        }
+      }
+    } catch (e) {
+      this.closed = true;
+      this._settle(e);
+    }
+  }
+
+  read(n, timeoutMs = 200) {
+    if (this.totalSize >= n) return Promise.resolve(this._takeBytes(n));
+    if (this.closed) return Promise.reject(new Error('Read stream closed'));
+
+    return new Promise((resolve, reject) => {
+      const pendingObj = { n, resolve, reject };
+      const timer = setTimeout(() => {
+        if (this.pending === pendingObj) {
+          this.pending = null;
+          reject(new Error(`Timeout: have ${this.totalSize} / ${n} bytes`));
+        }
+      }, timeoutMs);
+      pendingObj.timer = timer;
+      this.pending = pendingObj;
+    });
+  }
+
+  async write(bytes, logdata = true) {
+    const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    if (logdata) log(`> ${Array.from(data).map(b => b.toString(16).toUpperCase().padStart(2,'0')).join(' ')}`, 'i');
+    this.writer.write(data);
+  }
+
+  async transfer(bytes, n, timeoutMs = 200) {
+    await this.write(bytes);
+    return this.read(n, timeoutMs);
+  }
+
+  flush() {
+    this.chunks = [];
+    this.totalSize = 0;
+  }
+
+  _takeBytes(n) {
+    const result = new Uint8Array(n);
+    let offset = 0, remaining = n;
+    while (remaining > 0) {
+      const chunk = this.chunks[0];
+      const avail = chunk.byteLength;
+      if (avail <= remaining) {
+        result.set(chunk, offset);
+        offset += avail;
+        remaining -= avail;
+        this.totalSize -= avail;
+        this.chunks.shift();
+      } else {
+        result.set(chunk.subarray(0, remaining), offset);
+        this.chunks[0] = chunk.subarray(remaining);
+        this.totalSize -= remaining;
+        remaining = 0;
+      }
+    }
+    return result;
+  }
+
+  _settle(error) {
+    const p = this.pending;
+    if (!p || (!error && this.totalSize < p.n)) return;
+    this.pending = null;
+    clearTimeout(p.timer);
+    if (error) p.reject(error);
+    else try {p.resolve(this._takeBytes(p.n));} catch (e) {p.reject(e);}
+  }
+}
+
+async function connect() {
+  if (!('serial' in navigator)) {
+    setStatus('Web Serial API not supported. Use Chrome/Edge.', 'err');
+    return;
+  }
+  try {
+    const port = await navigator.serial.requestPort();
+    const baud = parseInt(baudSel.value, 10);
+    _serialIO = new SerialIO();
+    await _serialIO.open(port, baud);
+
+    log(`Connected, baud=${baud}`, 's', true);
+
+    updateUI();
+    await checkBootloaderMode();
+  } catch (e) {
+    await disconnect();
+    log('Connect error: ' + e.message, 'e', true);
+  }
+}
+
+async function disconnect() {
+  await _serialIO?.close();
+  _serialIO = null;
+  log('Disconnected', 'i', true);
+  updateUI();
+}
+
+async function connection() {
+  _serialIO ? disconnect() : connect();
+}
+
+async function checkBootloaderMode() {
+  log('Checking bootloader mode...', 'i');
+  _serialIO.flush();
+  const id = await _serialIO.transfer([0x0D], 1, 1000);
+  if (id[0] !== 0x32) throw new Error(`Device not V2 / Lite (got 0x${id[0].toString(16).toUpperCase()})`);
+  log('Got: 0x32 (V2/Lite device)', 's');
+
+  // Request device info
+  const ver = await _serialIO.transfer([0x10, 0xF0, 0x10, 0xF1, 0x10, 0xF2, 0x10, 0xF3, 0x10, 0xF4], 5, 1000);
+  const device = ver[0];
+  const protocol = ver[1];
+  const board = ver[2];
+  const major = ver[3];
+  const minor = ver[4];
+  log(`Device: ${device}, Protocol: ${protocol}, Board: ${board}, FW: ${major}.${minor}`, 'i');
+
+  // Check if in bootloader mode
+  if (device !== 2 || protocol !== 1 || board !== 0 || major !== 255 || minor !== 0)
+    throw new Error('Device not in bootloader mode. Please enter bootloader mode first.');
+
+  log('Device is in bootloader mode ✓', 's', true);
+  setProgress(0, '0%');
+}
+
+async function uploadBin(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  firmwareBuffer = await file.arrayBuffer();
+  log(`Loaded: ${file.name} (${(firmwareBuffer.byteLength / 1024).toFixed(1)} KB)`, 's', true);
+  updateUI();
+}
+
+async function flashFirmware() {
+  if (!_serialIO || !firmwareBuffer) {log('Not ready for flashing', 'e'); return;}
+  btnFlash.disabled = true;
+  const t0 = performance.now();
+  try {
+    log('Starting firmware flash...', 'i');
+    setProgress(0, '0%');
+    // Send address command: 0x08004000
+    log('Setting flash address to 0x08004000', 'i');
+    await _serialIO.write([0x22, 0xE0, 0x00, 0x40, 0x00, 0x08]);
+    // Send firmware data in chunks of 252 bytes
+    const CHUNK_SIZE = 252;
+    const size = firmwareBuffer.byteLength;
+    log(`Flashing ${size} bytes`, 'i');
+    for (let i = 0, pos = 0; pos < size; i++) {
+      const chunkSize = Math.min(size - pos, CHUNK_SIZE);
+      // Send write data command: [0x28, 0xE4, size, data..., 0x0D]
+      await _serialIO.write([0x28, 0xE4, chunkSize], false);
+      await _serialIO.write(new Uint8Array(firmwareBuffer, pos, chunkSize), false);
+      await _serialIO.write([0x0D], false);
+      // Wait for response 0x32
+      const response = await _serialIO.read(1, 2000);
+      if (response[0] !== 0x32) throw new Error(`Chunk ${i + 1} failed`);
+      pos+= chunkSize;
+      setProgress((pos / size) * 100, `${(pos / 1024).toFixed(1)} / ${(size / 1024).toFixed(1)} KB`);
+    }
+    log('Firmware data sent successfully', 's');
+    log('Sending reset command', 'i');
+    await _serialIO.write([0x20, 0xEF, 0x5E]);
+    log(`Flash complete! (${((performance.now() - t0) / 1000).toFixed(2)} seconds)`, 's', true);
+    setProgress(100, 'Complete!');
+  } catch (e) {
+    log('Flash error: ' + e.message, 'e', true);
+  } finally {
+    btnFlash.disabled = false;
+  }
+}
+
+// Update UI buttons depend from connection/upload file
+function updateUI() {
+  const state = !!_serialIO;
+  btnConnection.textContent = state ? 'Disconnect' : 'Connect';
+  btnConnection.setAttribute('pressed', state);
+  btnFlash.disabled = !state || !firmwareBuffer;
+  baudSel.disabled = state;
+}
+
+// Event listeners
+btnConnection.addEventListener('click', connection);
+firmwareFile.addEventListener('click', () => {firmwareFile.value = null;});
+firmwareFile.addEventListener('change', uploadBin);
+btnFlash.addEventListener('click', flashFirmware);
+
+if ('serial' in navigator)
+  navigator.serial.addEventListener('disconnect', e => {if (e.target === _serialIO?.port) disconnect();});
+
+const baudRates = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 1000000, 2000000, 3000000];
+baudSel.innerHTML = baudRates.map(rate => `<option value="${rate}"${rate === 115200 ? ' selected' : ''}>${rate}</option>`).join('');
+
+log('Ready. Connect device in bootloader mode and load firmware file.', 'i');
+log('To enter bootloader: hold Leveler button and power on', 'w');
+})();
+</script>
+
+</body>
+</html>
