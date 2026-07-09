@@ -425,7 +425,7 @@ async function dfuGetStatus(dev) {
   const r = await dev.controlTransferIn(
     { requestType: 'class', recipient: 'interface', request: DFU_GETSTATUS, value: 0, index: dfuInterface }, 6);
   const d = new Uint8Array(r.data.buffer);
-  return { bStatus: d[0], bwPollTimeout: getU32(d, 1), bState: d[4], iString: d[5] };
+  return { bStatus: d[0], bwPollTimeout: (d[1] | (d[2] << 8) | (d[3] << 16)), bState: d[4], iString: d[5] };
 }
 
 async function dfuClearStatus(dev) {
@@ -1167,7 +1167,6 @@ function updateUploadRange() {
   uploadEndSelect.innerHTML = '';
   if (!device || memorySegments.length === 0) {
     btnDoUpload.disabled = true;
-    uploadEndSelect.innerHTML = uploadStartSelect.innerHTML = '<option>No device</option>';
     uploadTotalSize.textContent = 'N/A';
     return;
   }
@@ -1287,11 +1286,11 @@ function updateUI() {
   btnUploadDevice.ariaPressed = uPanel;
 
   btnConnect.disabled = false;
-  btnConnect.textContent = !!device ? 'Disconnect' : 'Connect to Device';
+  btnConnect.textContent = !!device ? 'Disconnect' : '1. Connect to Device';
   btnConnect.ariaPressed = !!device;
   deviceInfo.style.display = !!device ? '' : 'none';
 
-  fileLabel.textContent = firmwareImage ? `${firmwareImage.fileName} (${toSize(firmwareImage.fileSize)})` : `Select ${getSupportedExtensions()} file`;
+  fileLabel.textContent = firmwareImage ? `${firmwareImage.fileName} (${toSize(firmwareImage.fileSize)})` : `2. Select ${getSupportedExtensions()} file`;
   fileLabel.ariaPressed = !!firmwareImage;
 
   flashAddressPanel.style.display = firmwareImage?.format === 'bin' ? '' : 'none';
