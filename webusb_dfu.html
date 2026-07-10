@@ -320,6 +320,10 @@ const STATUS_NAMES = {
   13:'errPOR', 14:'errUNKNOWN', 15:'errSTALLEDPKT'
 };
 
+// DFU Attributes
+const DFU_CAN_DNLOAD = 1, DFU_CAN_UPLOAD = 2, DFU_MTOLERANT = 4, DFU_CAN_DEATACH = 8;
+
+// Custom commands (not from DFU specification)
 const CMD_SET_ADDRESS = 0x21;
 const CMD_ERASE_PAGE = 0x41;
 
@@ -444,6 +448,11 @@ async function dfuUpload(dev, blockNum, length) {
   return new Uint8Array(r.data.buffer);
 }
 
+async function dfuDetach(dev) {
+  await dev.controlTransferOut(
+    { requestType: 'class', recipient: 'interface', request: DFU_DETACH, value: 1000, index: dfuInterface });
+}
+
 async function dfuAbort(dev) {
   await dev.controlTransferOut(
     { requestType: 'class', recipient: 'interface', request: DFU_ABORT, value: 0, index: dfuInterface });
@@ -540,6 +549,10 @@ async function eraseDevice(dev, target) {
 }
 
 async function programDevice(dev, target, summ) {
+  if (!(dfuAttributes & DFU_CAN_DNLOAD)) {
+    log('Download not supported. Download skipped.', 'w');
+    return true;
+  }
   log(`  Flashing ${summ} bytes...`, 's');
   let size = 0;
   for (const [id, block] of target.blocks.entries()) {
@@ -559,7 +572,7 @@ async function programDevice(dev, target, summ) {
 }
 
 async function verifyDevice(dev, target, summ) {
-  if (!(dfuAttributes & 0x02)) {
+  if (!(dfuAttributes & DFU_CAN_UPLOAD)) {
     log('Upload not supported. Verification skipped.', 'w');
     return true;
   }
@@ -573,7 +586,6 @@ async function verifyDevice(dev, target, summ) {
     for (let blockNo = 0, offset = 0; offset < data.length; blockNo++) {
       const chunkSize = Math.min(dfuTransferSize, data.length - offset);
 //    log(`  Block ${blockNo} (reading ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 't');
-      await waitForUploadIdle(dev);
       try {
         const chunk = await dfuUpload(dev, blockNo + 2, chunkSize);
         if (chunk.length === 0) { log(`Empty response on block ${blockNo}`, 'w'); break; }
@@ -594,8 +606,8 @@ async function verifyDevice(dev, target, summ) {
 }
 
 async function uploadDevice(dev, target, summ) {
-  if (!(dfuAttributes & 0x02)) {
-    log('Upload not supported. Verification skipped.', 'w');
+  if (!(dfuAttributes & DFU_CAN_UPLOAD)) {
+    log('Upload not supported. Upload skipped.', 'w');
     return true;
   }
   log(`  Upload...`, 's');
@@ -606,7 +618,6 @@ async function uploadDevice(dev, target, summ) {
     for (let blockNo = 0, offset = 0; offset < data.length; blockNo++) {
       const chunkSize = Math.min(dfuTransferSize, data.length - offset);
 //    log(`  Block ${blockNo} (reading ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 't');
-      await waitForUploadIdle(dev);
       try {
         const chunk = await dfuUpload(dev, blockNo + 2, chunkSize);
         if (chunk.length === 0) { log(`Empty response on block ${blockNo}`, 'w'); break; }
@@ -632,16 +643,12 @@ async function sendDeviceReset(dev) {
 }
 
 // Main DFU flash operation
-async function runOperation(doErase, doFlash, doVerify, doReset, doUpload=false) {
+async function runOperation(doErase, doFlash, doVerify, doUpload, doReset) {
   if (!device || !firmwareImage) {
     log('Connect device and select file first', 'e');
     return;
   }
-
-  btnFlash.disabled = true;
-  btnVerify.disabled = true;
-  btnConnect.disabled = true;
-
+  disableUI();
   const isBin = firmwareImage.format === 'bin';
   try {
     for (const [targetIdx, target] of firmwareImage.targets.entries()) {
@@ -651,8 +658,10 @@ async function runOperation(doErase, doFlash, doVerify, doReset, doUpload=false)
         log(` Empty`, 'w');
         continue;
       }
+      // Select Target interface
       await device.selectAlternateInterface(dfuInterface, target.altSetting);
       await resetToIdle(device);
+
       if (isBin) firmwareImage.updateAddress(targetIdx, parseAddress(flashAddress.value));
       if (doErase)  await eraseDevice(device, target);
       if (doFlash)  await programDevice(device, target, summ);
@@ -663,7 +672,8 @@ async function runOperation(doErase, doFlash, doVerify, doReset, doUpload=false)
   } catch (err) {
     log(`ERROR: ${err.message}`, 'e');
     try { await dfuClearStatus(device); } catch (e) {}
-  } finally {
+  } finally { // restore disabled UI
+    updateUploadSize();
     updateUI();
   }
 }
@@ -733,12 +743,6 @@ class FirmwareImage {
 }
 
 // Parsers helper functions
-// DFU parser and functions
-function parseBinFile(buffer, image) {
-  image.addTarget(0, 'Binary');
-  image.addBlock(0, 0, new Uint8Array(buffer));
-}
-
 function calculateDfuCrc(data) {
   let crc = 0xFFFFFFFF, bits;
   for (const byte of data) for(bits = 8, crc ^= byte; bits--; crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0));
@@ -759,6 +763,13 @@ function parseHexLine(lineNo, str, offset, expectedChecksum) {
   return bytes;
 }
 
+// BIN parser
+function parseBinFile(buffer, image) {
+  image.addTarget(0, 'Binary');
+  image.addBlock(0, 0, new Uint8Array(buffer));
+}
+
+// DFU parser
 // DfuSe file format constants
 const DFU_PREFIX_SIZE = 11;
 const DFU_TARGET_PREFIX_SIZE = 274;
@@ -1091,10 +1102,10 @@ async function loadDeviceInfo(dev) {
   log(`DFU interface ${dfuInterface} claimed`, 'i');
 
   // Display info
-  const canDownload = (dfuAttributes & 0x01) !== 0;
-  const canUpload = (dfuAttributes & 0x02) !== 0;
-  const manifestTolerant = (dfuAttributes & 0x04) !== 0;
-  const willDetach = (dfuAttributes & 0x08) !== 0;
+  const canDownload = (dfuAttributes & DFU_CAN_DNLOAD) !== 0;
+  const canUpload = (dfuAttributes & DFU_CAN_UPLOAD) !== 0;
+  const manifestTolerant = (dfuAttributes & DFU_MTOLERANT) !== 0;
+  const willDetach = (dfuAttributes & DFU_CAN_DEATACH) !== 0;
 
   let attr = `${canDownload ? 'D' : ''}${canUpload ? 'U' : ''}${manifestTolerant ? 'M' : ''}${willDetach ? 'W' : ''}`;
   deviceInfo.style.display = 'block';
@@ -1126,7 +1137,12 @@ async function loadDeviceInfo(dev) {
 async function connectDevice() {
   const filters = [
    { vendorId: 0x0483 }, // STM32
-   { vendorId: 0x2e3c }  // AT32
+   { vendorId: 0x2e3c }, // AT32
+   { vendorId: 0x28e9 }, // GD32
+   { vendorId: 0x1fc9 }, // NXP LPC
+   { vendorId: 0x03eb }, // Microchip SAM
+   { vendorId: 0x303a }, // ESP32-S2/S3
+   { vendorId: 0x1a86 }  // WCH
   ];
   // Reset data
   dfuInterface = -1;
@@ -1221,7 +1237,7 @@ async function doUpload() {
   const prevImage = firmwareImage;
   firmwareImage = image;
   try {
-    await runOperation(false, false, false, false, true);
+    await runOperation(false, false, false, true, false);
   } catch(e) {
     firmwareImage = prevImage;
   } finally {
@@ -1275,6 +1291,14 @@ async function saveAsBin() {
 //================================
 let uPanel = false; // Hide/show upload panel flag
 
+// Disable (prevent click)
+function disableUI() {
+  btnFlash.disabled =
+  btnVerify.disabled =
+  btnConnect.disabled =
+  btnDoUpload.disabled = true;
+}
+
 // UI depends on state
 function updateUI() {
   const state = !device || !firmwareImage;
@@ -1300,8 +1324,8 @@ function updateUI() {
 
 // Event listeners
 btnConnect.addEventListener('click', () => {!device ? connectDevice() : disconnectDevice();});
-btnFlash.addEventListener('click', () => {runOperation(btnErase.checked, true, btnVerifyAfter.checked, false);});
-btnVerify.addEventListener('click', () => runOperation(false, false, true, false));
+btnFlash.addEventListener('click', () => {runOperation(btnErase.checked, true, btnVerifyAfter.checked, false, false);});
+btnVerify.addEventListener('click', () => runOperation(false, false, true, false, false));
 fileInput.setAttribute('accept', file_format.map(f => `.${f.ext}`).join(','));
 fileInput.addEventListener('change', (e) => {loadFile(e.target.files[0]);});
 
