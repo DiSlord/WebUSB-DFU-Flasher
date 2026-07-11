@@ -64,8 +64,8 @@ h1 {
 }
 .help-box b { color: var(--btext); }
 .help { display: none; }
-.help h2, h3 { margin: 10px 0 0 10px; }
-.help ul{ padding-inline-start: 5px; margin: 0 4px; }
+.help h2, h3, h4 { margin: 10px 0 0 10px; }
+.help ul{ padding-inline-start: 10px; margin: 0 4px; }
 
 /* Theme  */
 #themeSelect {
@@ -1307,6 +1307,7 @@ let uPanel = false; // Hide/show upload panel flag
 
 // Disable (prevent click)
 function disableUI() {
+  btnFile.disabled =
   btnFlash.disabled =
   btnVerify.disabled =
   btnConnect.disabled =
@@ -1389,27 +1390,58 @@ updateUploadRange();
 <p>Browser-based firmware flashing tool for STM32, AT32 and other DFU-compatible microcontrollers</p>
 
 <h3>🚀 Quick Start</h3>
+<h4>Connect</h4>
 <ul>
- <li><b>Connect Device:</b> Put your device in DFU mode (BOOT0=HIGH for STM32) and click "Connect to Device"</li>
+ <li><b>Put your device in DFU mode:</b> Hold button and power on (or short BOOT0=HIGH  on PCB)</li>
+ <li><b>Connect Device:</b> click "Connect to Device" and select DFU device from the dialog</li>
+</ul>
+<h4>Flash / Verify operation</h4>
+<ul>
  <li><b>Load Firmware:</b> Select or drag & drop a firmware file (.bin, .dfu, .hex, .srec)</li>
- <li><b>Configure:</b> For BIN files, set flash start address (default: 0x08000000)</li>
- <li><b>Flash:</b> Click "Flash" to program the device</li>
- <li><b>Verify:</b> Click "Verify Only" to check existing firmware</li>
+ <li><b>Configure Options:</b>
+ <ul>
+  <li>For BIN files: specify flash start address (default: 0x08000000)</li>
+  <li>Enable/disable erase before flashing (leave enabled in most cases)</li>
+  <li>Enable/disable verification after flashing</li>
+ </ul>
+ <li><b>Flash:</b> Click "Flash" to start the programming process</li>
+ <li><b>Verify:</b> Click "Verify Only" to check existing firmware without reprogramming</li>
+</ul>
+<h4>Upload operation</h4>
+<ul>
+ <li><b>Open Upload Panel:</b> Click "Upload from Device" button</li>
+ <li><b>Select Range:</b>
+ <ul>
+  <li>Choose start sector from dropdown</li>
+  <li>Choose end sector from dropdown</li>
+  <li>Verify calculated size</li>
+ </ul>
+ <li><b>Upload:</b> Click "Upload" to read data from device</li>
+ <ul>
+  <li>Data read sector-by-sector</li>
+  <li>Progress bar shows completion</li>
+  <li>Data loaded as 'Device Dump' image with format 'bin'</li>
+ </ul>
+ <li><b>Save Dump:</b> Click "Save as BIN" to export firmware</li>
+ <ul>
+  <li>Choose file name and location</li>
+  <li>File saved with device address and size in name</li>
+ </ul>
 </ul>
 
 <h3>📱 Supported Devices</h3>
 <ul>
- <li><b>STM32</b> (VID: 0x0483) - Full DfuSe extension support</li>
- <li><b>AT32</b> (VID: 0x2E3C) - Artery microcontrollers</li>
- <li><b>GD32</b> (VID: 0x28E9) - GigaDevice</li>
- <li><b>ESP32-S2/S3</b> (VID: 0x303A) - Espressif</li>
+ <li><b>STM32</b> (VID: 0x0483) — Full DfuSe extension support</li>
+ <li><b>AT32</b> (VID: 0x2E3C) — Artery microcontrollers</li>
+ <li><b>GD32</b> (VID: 0x28E9) — GigaDevice</li>
+ <li><b>ESP32-S2/S3</b> (VID: 0x303A) — Espressif</li>
 </ul>
 
 <h3>📁 File Formats</h3>
 <ul>
- <li><b>.bin</b> - Raw binary (requires manual address)</li>
- <li><b>.dfu</b> - STMicroelectronics DfuSe format with CRC32</li>
- <li><b>.hex</b> - Intel HEX with extended addressing</li>
+ <li><b>.bin</b> — Raw binary (requires manual address)</li>
+ <li><b>.dfu</b> — STMicroelectronics DfuSe format with CRC32</li>
+ <li><b>.hex</b> — Intel HEX with extended addressing</li>
  <li><b>.srec/.s19/.s28/.s37</b> - Motorola S-Record</li>
 </ul>
 
@@ -1476,50 +1508,6 @@ updateUploadRange();
  <li>STM32: Set BOOT0=HIGH, then reset/power cycle</li>
  <li>Windows users: Install WinUSB driver via Zadig before first use</li>
 </ul>
-
-<h3>Basic Flash Operation</h3>
-<ul>
- <li><b>Connect Device:</b> Click "Connect to Device" and select your DFU device from the browser dialog</li>
- <li><b>Load Firmware:</b> Select or drag & drop a firmware file (.bin, .dfu, .hex, .srec)
- <li><b>Configure Options:</b>
- <ul>
-  <li>For BIN files: specify flash start address (default: 0x08000000)</li>
-  <li>Enable/disable erase before flashing (leave enable in most cases)</li>
-  <li>Enable/disable verification after flashing</li>
- </ul>
- <li><b>Flash:</b> Click "Flash" to start the programming process</li>
- <li><b>Verify:</b> Click "Verify Only" to check existing firmware without reprogramming</li>
-<br>
- <li><b>Upload from Device</b>
-  <ul>
-   <li><b>Connect Device:</b> Ensure device is in DFU mode and connected</li>
-   <li><b>Open Upload Panel:</b> Click "Upload from Device" button</li>
-  </ul>
-  </li>
- <li><b>Select Range:</b></li>
-  <ul>
-   <li>Choose Start sector from dropdown
-   <li>Choose End sector from dropdown</li>
-   <li>Verify calculated size</li>
-  </ul>
- </li>
- <li><b>Upload:</b> Click "Upload" to read data from device
-  <ul>
-   <li>Data read sector-by-sector</li>
-   <li>Progress bar shows completion</li>
-   <li>Data loaded as 'Device Dump' image with format 'bin'</li>
-  </ul>
- </li>
- <li><b>Save Dump:</b> Click "Save as BIN" to export firmware
-  <ul>
-   <li>Choose file name and location</li>
-   <li>File saved with device address and size in name</li>
-  </ul>
- </li>
-</ul>
-</ul>
-</div>
-
 </div>
 
 </body>
