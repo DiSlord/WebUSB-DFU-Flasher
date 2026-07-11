@@ -1,9 +1,19 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" translate="no">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>WebUSB DFU Flasher</title>
 <style>
+:root {
+ --fs-small: 14px;
+ --fs-normal: 15px;
+ --fs-large: 22px;
+ 
+ --font-sans: 'Segoe UI', system-ui, sans-serif;
+ --font-mono: 'Consolas', monospace;
+}
+
 .t { --c: var(--muted); }
 .i { --c: var(--accent); }
 .s { --c: var(--success); }
@@ -15,17 +25,20 @@ body {
  padding: 10px;
  background: var(--bg);
  color: var(--text);
- font-family: 'Segoe UI', system-ui, sans-serif;
+ font-family: var(--font-sans);
+ font-size: var(--fs-normal);
  display: flex;
  justify-content: center;
 }
 
 h1 {
+ flex: 1;
  margin: 0;
- font-size: 22px;
+ font-size: var(--fs-large);
  font-weight: bold;
  color: var(--accent);
  text-align: center;
+ padding-left: 85px;
 }
 
 .container {
@@ -42,50 +55,51 @@ h1 {
 }
 
 #themeSelect {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  font-size: 12px;
-  padding: 4px;
+ flex:1;
+ font-size: var(--fs-small);
+ letter-spacing: -0.8px;
+ padding: 4px;
+ max-width: 95px;
 }
 
 .info-box {
  background: var(--bg);
- padding: 10px;
- margin: 5px 0;
- font-size: 14px;
+ padding: 2px 5px;
+ font-size: var(--fs-small);
  border-radius: 6px;
  cursor: pointer;
 }
-.info-box b {
- color: var(--btext);
+.info-box b { color: var(--btext); }
+
+.help {
+ display: none;
 }
-.info-box label {
- display: block;
- text-align: center;
- width: 100%;
+.help h2, h3 {
+ margin: 10px 0 0 10px;
+}
+.help ul{
+ padding-inline-start: 5px;
+ margin: 0 4px;
 }
 
 .device-info {
  background: var(--bg);
- font: 13px 'Consolas', monospace;
+ font-family: var(--font-mono);
+ font-size: var(--fs-small);
+ letter-spacing: -0.8px;
  padding: 8px;
  border: 1px solid var(--border);
  border-radius: 6px;
- margin: 5px 0;
 }
-.device-info b {
- color: var(--btext);
-}
+.device-info b { color: var(--btext); }
 
 .upload-group {
- display:none;
+ display: none;
  background: var(--uploadbg);
- font-size: 14px;
+ font-size: var(--fs-normal);
  padding: 8px;
  border: 1px solid var(--border);
  border-radius: 6px;
- margin: 5px 0;
 }
 
 .input-group {
@@ -93,7 +107,7 @@ h1 {
  flex-direction: column;
 }
 .input-group label {
- font-size: 14px;
+ font-size: var(--fs-normal);
  gap: 3px;
 }
 .input-field {
@@ -102,7 +116,9 @@ h1 {
  color: var(--text);
  border: 1px solid var(--border);
  border-radius: 6px;
- font: 14px 'Consolas', monospace;
+ font-family: var(--font-mono);
+ font-size: var(--fs-small);
+ letter-spacing: -0.8px;
 }
 .input-field:focus {
  outline: none;
@@ -124,49 +140,51 @@ h1 {
 
 .file-label {
  color: var(--text);
- background: var(--na_button);
+ background: var(--btn_na);
  display: block;
  padding: 8px;
  border-radius: 6px;
+ border: 1px solid var(--border);
  font-weight: 600;
  text-align: center;
+ font-size: var(--fs-normal);
 }
-.file-label[aria-pressed="true"] { background: var(--connect);}
+.file-label[aria-pressed="true"] { background: var(--connect); }
 
 .checkbox-group { display: flex; align-items: center; gap: 8px; }
 .checkbox-group input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
-.checkbox-group label { font-size: 14px; cursor: pointer; }
+.checkbox-group label { font-size: var(--fs-normal); cursor: pointer; }
 
 button {
  color: var(--text);
- padding: 10px 16px;
- border: none;
+ padding: 8px;
+ border: 1px solid var(--border);
  border-radius: 6px;
- font-size: 14px;
+ font-size: var(--fs-normal);
  font-weight: 600;
  cursor: pointer;
  flex: 1;
 }
 button:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-row { display: flex; gap: 10px; align-items: center;}
+.btn-row { display: flex; gap: 10px; align-items: center; }
 .btn-column { display: flex; flex-direction: column; gap: 6px; }
-.btn-connect { background: var(--na_button); }
-.btn-connect[aria-pressed="true"] { background: var(--connect);}
-.btn-upload { background: var(--na_button); }
-.btn-upload[aria-pressed="true"] { background: var(--connect);}
+.btn-connect { background: var(--btn_na); }
+.btn-connect[aria-pressed="true"] { background: var(--connect); }
+.btn-upload { background: var(--btn_na); }
+.btn-upload[aria-pressed="true"] { background: var(--connect); }
 .btn-flash { background: var(--flash); }
 .btn-save { background: var(--save); }
 .btn-verify { background: var(--verify); }
-.btn-git {background: var(--git);}
+.btn-git { background: var(--git); }
 
 .progress-bar {
  width: 100%;
  background: var(--bg);
  border-radius: 6px;
  overflow: hidden;
- height: 22px;
+ min-height: 18px;
  position: relative;
- border: 1px solid var(--border); 
+ border: 1px solid var(--border);
 }
 .progress-fill {
  height: 100%; width: 0%;
@@ -174,15 +192,17 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 }
 .progress-text {
  position: absolute;
- top: 50%; left: 50%;
- transform: translate(-50%,-50%);
- font-size: 12px;
+ top: 45%; left: 50%;
+ transform: translate(-50%, -50%);
+ font-size: var(--fs-normal);
  font-weight: bold;
 }
 
 .log {
  background: var(--bg);
- font: 12px 'Consolas', monospace;
+ font-family: var(--font-mono);
+ font-size: var(--fs-small);
+ letter-spacing: -0.8px;
  padding: 8px;
  border: 1px solid var(--border);
  border-radius: 6px;
@@ -193,18 +213,39 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .log :is(.t,.e,.w,.i,.s) { color: var(--c); }
 
 .info {
- font-size: 12px;
+ font-size: var(--fs-small);
  text-align: center;
+ letter-spacing: -0.8px;
 }
 
+@media (max-width: 640px) {
+ :root {
+ --fs-small: 11px;
+ --fs-normal: 14px;
+ --fs-large: 16px;
+ }
+ body {
+  padding: 0;
+  background: var(--surface);
+ }
+ .container {
+  max-width: none;
+  border-radius: 0;
+  border: none;
+  width: 100vw;
+  padding: 4px;
+ }
+ .device-info { padding: 4px; }
+ .log { padding: 4px; }
+}
 </style>
 </head>
 
 <body>
 <div class="container">
-  <h1>WebUSB DFU Flasher</h1><select id="themeSelect" class="input-field"></select>
+  <div class="btn-row"><h1>WebUSB DFU Flasher</h1><select id="themeSelect" class="input-field"></select></div>
   <div id="infoBox" class="info-box">
-    Supports <b>STM32</b> (VID 0483) and <b>AT32</b> (VID 2E3C). Requires <b>Chrome / Edge / Opera</b>.<br>
+    Supports <b>STM32</b> (VID 0483) and <b>AT32</b> (VID 2E3C).
   </div>
   <button id="btnConnect" class="btn-connect"></button>
   <div id="deviceInfo" class="device-info"></div>
@@ -228,7 +269,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   <div class="btn-row">
     <button id="btnFlash" class="btn-flash">Flash</button>
     <button id="btnVerify" class="btn-verify">Verify Only</button>
-    <button id="btnUploadDevice" class="btn-upload">Upload from Device</button>
+    <button id="btnUploadDevice" class="btn-upload">Read from</button>
   </div>
   <div id="uploadPanel" class="upload-group">
     <div class="btn-row">
@@ -236,7 +277,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
       <label>End:</label><select id="uploadEndSelect" class="input-field" style="flex:1;"></select>
     </div>
     <div class="btn-row" style="margin-top: 6px">
-      <label>Size:</label><label id="uploadTotalSize"></label>
+      <label>Upload:</label><label id="uploadTotalSize"></label>
     </div>
     <div class="btn-row" style="margin-top: 6px;">
       <button id="btnDoUpload" class="btn-flash">Upload</button>
@@ -253,27 +294,27 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 
 <script>
 // Color themes support
-const themeNames = ['Dark', 'Light', 'Gruvbox', 'Catppuccin', 'Material', 'Warm Dark', 'Midnight Blue'];
+const themeNames = ['Dark', 'Light', 'Gruvbox', 'Catppuccin', 'Material', 'Warm Dark', 'Midnight'];
 const themes = {
-  '--bg'       : ['#0a0a0f', '#f5f5f5', '#fbf1c7', '#eff1f5', '#fafafa', '#1a1512', '#0a0e1a'],
-  '--surface'  : ['#14141f', '#ffffff', '#f9f5d7', '#e6e9ef', '#ffffff', '#241e18', '#141a2a'],
-  '--uploadbg' : ['#1e1e2e', '#eaeaf0', '#f2e8bc', '#dce0e8', '#f1f3f4', '#2e2620', '#1c2438'],
-  '--border'   : ['#404040', '#d0d0d8', '#d5c4a1', '#ccd0da', '#dadce0', '#3d342a', '#2a3450'],
-  '--text'     : ['#f0f0ff', '#000000', '#202020', '#202020', '#202124', '#e8dcc8', '#f0f0ff'],
-  '--btext'    : ['#00e000', '#028800', '#79740e', '#40a02b', '#188038', '#d4a547', '#4ac8e0'],
-  '--na_button': ['#252535', '#e0e0e8', '#ebdbb2', '#ccd0da', '#f1f3f4', '#3a3028', '#252d45'],
-  '--connect'  : ['#2196F3', '#20e0e0', '#458588', '#1e66f5', '#1a73e8', '#4a8db8', '#3a7bd4'],
-  '--flash'    : ['#028800', '#30d040', '#98971a', '#40a02b', '#188038', '#6b9e4a', '#2ab87a'],
-  '--verify'   : ['#ff8000', '#e09000', '#d65d0e', '#fe640b', '#f9ab00', '#d48a3a', '#e0a040'],
-  '--save'     : ['#2196F3', '#50b0e0', '#458588', '#1e66f5', '#1a73e8', '#4a8db8', '#3a7bd4'],
-  '--git'      : ['#a855f7', '#7048e8', '#b16286', '#8839ef', '#9334e6', '#a86bd4', '#a855f7'],
-  '--unused'   : ['#7c3aed', '#5f3dc4', '#8f3f71', '#7287fd', '#7c3aed', '#8b5ec4', '#8b5cf6'],
-  '--progress' : ['#028800', '#20c040', '#98971a', '#40a02b', '#188038', '#6b9e4a', '#2ab87a'],
-  '--muted'    : ['#9a9ab8', '#4a4a5a', '#7c6f64', '#5c5f77', '#3c4043', '#9a8a75', '#7a8aaa'],
-  '--accent'   : ['#5b8cff', '#1a4bc7', '#076678', '#1e55d5', '#0d5bc4', '#d4a574', '#6a9ae4'],
-  '--success'  : ['#69d97a', '#008a00', '#00c000', '#2d8a1f', '#0d7a2e', '#9ad07a', '#4ad8a8'],
-  '--error'    : ['#ff6b85', '#b81c1c', '#b8201a', '#b80d2e', '#c1271d', '#e45a4a', '#ff5a6e'],
-  '--warn'     : ['#ffd866', '#d46a00', '#b57f00', '#c47d00', '#e69500', '#e4b557', '#f0a040']
+ '--bg'      : ['#0a0a0f', '#f5f5f5', '#fbf1c7', '#eff1f5', '#fafafa', '#1a1512', '#0a0e1a'],
+ '--surface' : ['#14141f', '#ffffff', '#f9f5d7', '#e6e9ef', '#ffffff', '#241e18', '#141a2a'],
+ '--uploadbg': ['#1e1e2e', '#eaeaf0', '#f2e8bc', '#dce0e8', '#f1f3f4', '#2e2620', '#1c2438'],
+ '--border'  : ['#505050', '#b0b0b8', '#d5c4a1', '#ccd0da', '#dadce0', '#504040', '#304048'],
+ '--text'    : ['#f0f0ff', '#000000', '#202020', '#202020', '#202124', '#e8dcc8', '#f0f0ff'],
+ '--btext'   : ['#00e000', '#028800', '#79740e', '#40a02b', '#188038', '#d4a547', '#4ac8e0'],
+ '--btn_na'  : ['#252535', '#e0e0e8', '#ebdbb2', '#ccd0da', '#f1f3f4', '#3a3028', '#252d45'],
+ '--connect' : ['#2196F3', '#20e0e0', '#458588', '#1e66f5', '#1a73e8', '#4a8db8', '#3a7bd4'],
+ '--flash'   : ['#028800', '#30d040', '#98971a', '#40a02b', '#188038', '#6b9e4a', '#2ab87a'],
+ '--verify'  : ['#ff8000', '#e09000', '#d65d0e', '#fe640b', '#f9ab00', '#d48a3a', '#e0a040'],
+ '--save'    : ['#2196F3', '#50b0e0', '#458588', '#1e66f5', '#1a73e8', '#4a8db8', '#3a7bd4'],
+ '--git'     : ['#a855f7', '#7048e8', '#b16286', '#8839ef', '#9334e6', '#a86bd4', '#a855f7'],
+ '--unused'  : ['#7c3aed', '#5f3dc4', '#8f3f71', '#7287fd', '#7c3aed', '#8b5ec4', '#8b5cf6'],
+ '--progress': ['#028800', '#20c040', '#98971a', '#40a02b', '#188038', '#6b9e4a', '#2ab87a'],
+ '--muted'   : ['#9a9ab8', '#4a4a5a', '#7c6f64', '#5c5f77', '#3c4043', '#9a8a75', '#7a8aaa'],
+ '--accent'  : ['#5b8cff', '#1a4bc7', '#076678', '#1e55d5', '#0d5bc4', '#d4a574', '#6a9ae4'],
+ '--success' : ['#69d97a', '#008a00', '#00c000', '#2d8a1f', '#0d7a2e', '#9ad07a', '#4ad8a8'],
+ '--error'   : ['#ff6b85', '#b81c1c', '#b8201a', '#b80d2e', '#c1271d', '#e45a4a', '#ff5a6e'],
+ '--warn'    : ['#ffd866', '#d46a00', '#b57f00', '#c47d00', '#e69500', '#e4b557', '#f0a040']
 
 };
 function applyTheme(index) {
@@ -375,7 +416,7 @@ function log(msg, cls = 'i', append = false) {
     if (span) span.textContent += ' ' + msg;
     else lastLogElement.innerHTML += ' ' + msg;
   } else {
-    const time = new Date().toISOString().slice(11, 23);
+    const time = new Date().toLocaleTimeString("en-GB");
     const div = document.createElement('div');
     div.innerHTML = `<span class="t">[${time}]</span> <span class="${cls}">${msg}</span>`;
     logEl.appendChild(div);
@@ -653,7 +694,7 @@ async function runOperation(doErase, doFlash, doVerify, doUpload, doReset) {
   try {
     for (const [targetIdx, target] of firmwareImage.targets.entries()) {
       const summ = target.blocks.reduce((sum, { data }) => sum + data.length, 0);
-      log(`Target ${targetIdx}: ${target.name || 'unnamed'} (alt=${target.altSetting}), size: ${toSize(summ)}`, 's');
+      log(`Target ${targetIdx}: ${target.name || 'unnamed'} (alt=${target.altSetting}): ${toSize(summ)}`, 's');
       if (summ === 0) {
         log(` Empty`, 'w');
         continue;
@@ -816,7 +857,7 @@ function parseDfuFile(buffer, image) {
     const targetIdx = image.targets.length;
     image.addTarget(altSetting, name);
 
-    log(` Target ${t}: alt=${altSetting}, name="${name}", ${numBlocks} block(s)`, 'i');
+    log(` Target ${t}: alt=${altSetting}, <b>"${name}"</b>, ${numBlocks} block(s)`, 'i');
 
     offset += DFU_TARGET_PREFIX_SIZE;
     const targetStartOffset = offset;
@@ -1122,7 +1163,7 @@ async function loadDeviceInfo(dev) {
   + memorySegments.map(seg => {
      const regions = seg.regions.map(r => 
     `${toHex(r.startAddress)}..${toHex(r.endAddress)} (${r.sectorCount}×${r.sectorSize}B, ${r.readable ? 'R':''}${r.writable ? 'W':''}${r.erasable ? 'E':''})`).join(', ');
-     return `<br>&nbsp;&nbsp;• <b>${seg.name}</b>: ${regions}`;
+     return `<br> • <b>${seg.name}</b>: ${regions}`;
     }).join('');
 
   log(`Connected: ${dev.productName || 'Unknown'} (${dev.manufacturerName || 'Unknown'})`, 's');
@@ -1210,9 +1251,10 @@ function updateUploadRange() {
 }
 
 function updateUploadSize() {
-  const size = parseInt(uploadEndSelect.value) - parseInt(uploadStartSelect.value);
+  const start = parseInt(uploadStartSelect.value), end = parseInt(uploadEndSelect.value);
+  const size = end - start;
   const ok = size > 0;
-  uploadTotalSize.textContent = ok ? toSize(size) : 'Invalid range';
+  uploadTotalSize.textContent = ok ? `${toHex(start)} .. ${toHex(end)} (${toSize(size)})` : 'Invalid range';
   uploadTotalSize.style.color = ok ? 'var(--accent)' : 'var(--error)';
   btnDoUpload.disabled = !ok;
 }
@@ -1368,107 +1410,143 @@ updateUI();
 updateUploadRange();
 </script>
 
-<div id="helpContent" class="help-content" style="display:none; white-space: pre-wrap;">
-<h2>WebUSB DFU Flasher about</h2>
-<b>Overview</b>
- WebUSB DFU Flasher is a browser-based firmware flashing tool for STM32 and AT32 microcontrollers using the WebUSB API. It provides a modern, cross-platform solution for device firmware upgrade (DFU) without requiring native applications or drivers (except WinUSB on Windows).
+<div id="helpContent" class="help">
+<h2>WebUSB DFU Flasher</h2>
+<p>Browser-based firmware flashing tool for STM32, AT32 and other DFU-compatible microcontrollers</p>
 
-<b>Device Support</b>
- STM32 microcontrollers (USB Vendor ID: 0x0483)
- AT32 microcontrollers (USB Vendor ID: 0x2E3C)
- Full DfuSe extension support
- Automatic memory segment detection from device descriptors
+<h3>🚀 Quick Start</h3>
+<ul>
+ <li><b>Connect Device:</b> Put your device in DFU mode (BOOT0=HIGH for STM32) and click "Connect to Device"</li>
+ <li><b>Load Firmware:</b> Select or drag & drop a firmware file (.bin, .dfu, .hex, .srec)</li>
+ <li><b>Configure:</b> For BIN files, set flash start address (default: 0x08000000)</li>
+ <li><b>Flash:</b> Click "Flash" to program the device</li>
+ <li><b>Verify:</b> Click "Verify Only" to check existing firmware</li>
+</ul>
 
-<b>Firmware File Formats</b>
- • Binary (.bin) - Raw binary firmware with manual address specification
- • DfuSe (.dfu) - STMicroelectronics DFU format with CRC32 verification
- • Intel HEX (.hex) - Standard Intel HEX format with extended addressing
- • Motorola S-Record (.srec, .s19, .s28, .s37) - Motorola S-record format with automatic type detection
+<h3>📱 Supported Devices</h3>
+<ul>
+ <li><b>STM32</b> (VID: 0x0483) - Full DfuSe extension support</li>
+ <li><b>AT32</b> (VID: 0x2E3C) - Artery microcontrollers</li>
+ <li><b>GD32</b> (VID: 0x28E9) - GigaDevice</li>
+ <li><b>ESP32-S2/S3</b> (VID: 0x303A) - Espressif</li>
+</ul>
 
-<b>Core Operations</b>
- <b>Flash (Write to Device)</b>
-   Intelligent sector-based erasure with automatic sector size detection
-   Reliable firmware programming with progress tracking
-   Support for multiple memory regions with different sector sizes
-   Duplicate sector prevention for overlapping blocks
+<h3>📁 File Formats</h3>
+<ul>
+ <li><b>.bin</b> - Raw binary (requires manual address)</li>
+ <li><b>.dfu</b> - STMicroelectronics DfuSe format with CRC32</li>
+ <li><b>.hex</b> - Intel HEX with extended addressing</li>
+ <li><b>.srec/.s19/.s28/.s37</b> - Motorola S-Record</li>
+</ul>
 
- <b>Verify (Read and Compare)</b>
-   Post-flash verification with mismatch detection
-   Byte-by-byte comparison with detailed error reporting
-   Shows first mismatch address and expected/actual values
+<h3>⚙️ Core Operations</h3>
+<ul>
+ <li><b>Flash (Write)</b>
+  <ul>
+   <li>Intelligent sector-based erasure with automatic size detection</li>
+   <li>Progress tracking and multiple memory region support</li>
+   <li>Duplicate sector prevention for overlapping blocks</li>
+  </ul>
+ </li>
+ <li><b>Verify (Read & Compare)</b>
+  <ul>
+   <li>Post-flash byte-by-byte verification</li>
+   <li>Detailed mismatch reporting with first error location</li>
+  </ul>
+ </li>
+ <li><b>Upload from Device (Read Back)</b>
+  <ul>
+   <li>Extract firmware for backup or analysis</li>
+   <li>Sector-based range selection from device memory map</li>
+   <li>Save as BIN with custom path</li>
+  </ul>
+ </li>
+</ul>
 
- <b>Upload from Device (Read Back)</b>
-   Read firmware from device - Extract existing firmware for backup or analysis
-   Sector-based selection - Choose start and end sectors from device memory map
-   Automatic size calculation - Real-time display of selected range size
-   Save as BIN - Export device dump to binary file with custom path selection
-   Integration with workflow - Uploaded dumps can be immediately verified or re-flashed
+<h3>💻 System Requirements</h3>
+<ul>
+ <li>🌐 Browser
+  <ul>
+   <li>Chrome 86+ (recommended)</li>
+   <li>Edge 86+</li>
+   <li>Opera 72+</li>
+   <li><i>Not supported: Firefox, Safari</i></li>
+  </ul>
+ </li>
+ <li>🪟 Operating System
+  <ul>
+   <li><b>Windows:</b> WinUSB driver required (install via <a href="https://zadig.akeo.ie/" target="_blank">Zadig</a>)</li>
+   <li><b>Linux/macOS/Android:</b> No additional drivers needed</li>
+  </ul>
+ </li>
+ <li>🛠️ Hardware
+  <ul>
+   <li>USB data cable (not charge-only)</li>
+   <li>Device in DFU bootloader mode</li>
+   <li>USB OTG adapter (for Android devices)</li>
+  </ul>
+ </li>
+</ul>
 
-<b>File Parsing</b>
- DFU: Full DfuSe format support with prefix/suffix validation, CRC32 verification, multiple target handling
- HEX: Extended segment/linear address records (types 02/04), start address records (types 03/05)
- SREC: S1/S2/S3 data records with 16/24/32-bit addressing, entry point detection from S7/S8/S9 end records
+<h3>🔒 Security & Privacy</h3>
+<ul>
+ <li>WebUSB requires explicit user permission for each connection</li>
+ <li>No persistent storage of device data or firmware</li>
+ <li>All operations in browser sandbox</li>
+ <li>HTTPS required for production (localhost allowed for development)</li>
+</ul>
 
-<b>System Requirements</b>
- Browser Support
- Chrome 86+ (recommended)
- Edge 86+
- Opera 72+
+<h3>⚠️ Important Notes</h3>
+<ul>
+ <li>Device must be in <b>DFU bootloader mode</b> (not application mode)</li>
+ <li>STM32: Set BOOT0=HIGH, then reset/power cycle</li>
+ <li>Windows users: Install WinUSB driver via Zadig before first use</li>
+</ul>
 
-<b>WebUSB API support required</b>
-<b>Operating System</b>
- Windows: WinUSB driver required (install via Zadig tool)
- Linux: No additional drivers needed (libusb handles USB access)
- macOS: No additional drivers needed
-
-<b>Hardware</b>
- USB cable with data connection (not charge-only)
- Device in DFU bootloader mode
- USB port with sufficient power delivery
-
-<b>User Interface</b>
- Device information display (VID:PID, memory regions, transfer size)
- Firmware file analysis (targets, blocks, addresses, sizes)
- Detailed logging with timestamps and color-coded messages
- Drag & drop file support
- Multiple color themes
-
-<b>Security Considerations</b>
- WebUSB requires explicit user permission for each device connection
- No persistent storage of device data or firmware
- All operations occur in browser sandbox with standard security policies
- HTTPS required for production deployment (localhost allowed for development)
-
-<b>Limitations</b>
- WebUSB not supported in Firefox or Safari
- Windows requires WinUSB driver installation
- Device must be in DFU bootloader mode (not application mode)
- Some devices may require custom VID:PID filters
-<label> • • • </label>
-<b>Basic Flash Operation</b>
- Connect Device: Click "Connect to Device" and select your DFU device from the browser dialog
- Load Firmware: Select or drag & drop a firmware file (.bin, .dfu, .hex, .srec)
- Configure Options:
-  • For BIN files: specify flash start address (default: 0x08000000)
-  • Enable/disable erase before flashing (leave enable in most cases)
-  • Enable/disable verification after flashing
- Flash: Click "Flash" to start the programming process
- Verify: Click "Verify Only" to check existing firmware without reprogramming
-
-<b>Upload from Device</b>
- Connect Device: Ensure device is in DFU mode and connected
- Open Upload Panel: Click "Upload from Device" button
- Select Range:
-  • Choose Start sector from dropdown
-  • Choose End sector from dropdown
-  • Verify calculated size
- Upload: Click "Upload" to read data from device
-  • Data read sector-by-sector
-  • Progress bar shows completion
-  • Creates 'Device Dump' image with format 'bin'
- Save Dump: Click "Save as BIN" to export firmware
-  • Choose file name and location
-  • File saved with device address and size in name
+<h3>Basic Flash Operation</h3>
+<ul>
+ <li><b>Connect Device:</b> Click "Connect to Device" and select your DFU device from the browser dialog</li>
+ <li><b>Load Firmware:</b> Select or drag & drop a firmware file (.bin, .dfu, .hex, .srec)
+ <li><b>Configure Options:</b>
+ <ul>
+  <li>For BIN files: specify flash start address (default: 0x08000000)</li>
+  <li>Enable/disable erase before flashing (leave enable in most cases)</li>
+  <li>Enable/disable verification after flashing</li>
+ </ul>
+ <li><b>Flash:</b> Click "Flash" to start the programming process</li>
+ <li><b>Verify:</b> Click "Verify Only" to check existing firmware without reprogramming</li>
+<br>
+ <li><b>Upload from Device</b>
+  <ul>
+   <li><b>Connect Device:</b> Ensure device is in DFU mode and connected</li>
+   <li><b>Open Upload Panel:</b> Click "Upload from Device" button</li>
+  </ul>
+  </li>
+ <li><b>Select Range:</b></li>
+  <ul>
+   <li>Choose Start sector from dropdown
+   <li>Choose End sector from dropdown</li>
+   <li>Verify calculated size</li>
+  </ul>
+ </li>
+ <li><b>Upload:</b> Click "Upload" to read data from device
+  <ul>
+   <li>Data read sector-by-sector</li>
+   <li>Progress bar shows completion</li>
+   <li>Data loaded as 'Device Dump' image with format 'bin'</li>
+  </ul>
+ </li>
+ <li><b>Save Dump:</b> Click "Save as BIN" to export firmware
+  <ul>
+   <li>Choose file name and location</li>
+   <li>File saved with device address and size in name</li>
+  </ul>
+ </li>
+</ul>
+</ul>
 </div>
+
+</div>
+
 </body>
 </html>
