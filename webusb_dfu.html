@@ -1415,22 +1415,25 @@ updateUploadRange();
 <ul>
  <li><b>Open Upload Panel:</b> Click "Upload from Device" button</li>
  <li><b>Select Range:</b>
- <ul>
-  <li>Choose start sector from dropdown</li>
-  <li>Choose end sector from dropdown</li>
-  <li>Verify calculated size</li>
- </ul>
- <li><b>Upload:</b> Click "Upload" to read data from device</li>
- <ul>
-  <li>Data read sector-by-sector</li>
-  <li>Progress bar shows completion</li>
-  <li>Data loaded as 'Device Dump' image with format 'bin'</li>
- </ul>
- <li><b>Save Dump:</b> Click "Save as BIN" to export firmware</li>
- <ul>
-  <li>Choose file name and location</li>
-  <li>File saved with device address and size in name</li>
- </ul>
+  <ul>
+   <li>Choose start sector from dropdown</li>
+   <li>Choose end sector from dropdown</li>
+   <li>Verify calculated size</li>
+  </ul>
+ </li>
+ <li><b>Upload:</b> Click "Upload" to read data from device
+  <ul>
+   <li>Data read sector-by-sector</li>
+   <li>Progress bar shows completion</li>
+   <li>Data loaded as 'Device Dump' image with format 'bin'</li>
+  </ul>
+ </li>
+ <li><b>Save Dump:</b> Click "Save as BIN" to export firmware
+  <ul>
+   <li>Choose file name and location</li>
+   <li>File saved with device address and size in name</li>
+  </ul>
+ </li>
 </ul>
 
 <h3>📱 Supported Devices</h3>
@@ -1508,9 +1511,19 @@ updateUploadRange();
 
 <h3>⚠️ Important Notes</h3>
 <ul>
- <li>Device must be in <b>DFU bootloader mode</b> (not application mode)</li>
- <li>STM32: Set BOOT0=HIGH, then reset/power cycle</li>
- <li>Windows users: Install WinUSB driver via Zadig before first use</li>
+ <li>Device must be in <b>DFU bootloader mode</b> (not application mode)<br>
+     STM32: Set BOOT0=HIGH, then reset/power cycle</li>
+ <li><b>Windows</b> users: Install <b>WinUSB</b> driver via <b>Zadig</b> before first use
+  <ul>
+   <li>Download Zadig from <a href="https://zadig.akeo.ie/" target="_blank">zadig.akeo.ie</a></li>
+   <li>Run Zadig as Administrator</li>
+   <li>Options → List All Devices</li>
+   <li>Select your DFU device (e.g., <b>STM32 or AT32 BOOTLOADER</b>)</li>
+   <li>Choose "WinUSB" from dropdown</li>
+   <li>Click "Install Driver" or "Replace Driver"</li>
+   <li>If you see "Access denied" error — WinUSB driver is not installed</li>
+  </ul>
+ </li>
 </ul>
 </div>
 
