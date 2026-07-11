@@ -14,7 +14,7 @@
  --font-mono: 'Consolas', monospace;
 }
 
-.t { --c: var(--muted); }
+.t { --c: var(--time); }
 .i { --c: var(--accent); }
 .s { --c: var(--success); }
 .w { --c: var(--warn); }
@@ -192,7 +192,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 }
 .progress-text {
  position: absolute;
- top: 45%; left: 50%;
+ top: 50%; left: 50%;
  transform: translate(-50%, -50%);
  font-size: var(--fs-normal);
  font-weight: bold;
@@ -208,7 +208,15 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
  border-radius: 6px;
  height: 280px;
  overflow-y: auto;
- white-space: pre-wrap;
+}
+
+.log div {
+  display: flex;
+  gap: 4px;
+}
+.log span:not(.t) {
+  flex: 1;
+  word-break: break-word;
 }
 .log :is(.t,.e,.w,.i,.s) { color: var(--c); }
 
@@ -310,7 +318,7 @@ const themes = {
  '--git'     : ['#a855f7', '#7048e8', '#b16286', '#8839ef', '#9334e6', '#a86bd4', '#a855f7'],
  '--unused'  : ['#7c3aed', '#5f3dc4', '#8f3f71', '#7287fd', '#7c3aed', '#8b5ec4', '#8b5cf6'],
  '--progress': ['#028800', '#20c040', '#98971a', '#40a02b', '#188038', '#6b9e4a', '#2ab87a'],
- '--muted'   : ['#9a9ab8', '#4a4a5a', '#7c6f64', '#5c5f77', '#3c4043', '#9a8a75', '#7a8aaa'],
+ '--time'    : ['#9a9ab8', '#4a4a5a', '#7c6f64', '#5c5f77', '#3c4043', '#9a8a75', '#7a8aaa'],
  '--accent'  : ['#5b8cff', '#1a4bc7', '#076678', '#1e55d5', '#0d5bc4', '#d4a574', '#6a9ae4'],
  '--success' : ['#69d97a', '#008a00', '#00c000', '#2d8a1f', '#0d7a2e', '#9ad07a', '#4ad8a8'],
  '--error'   : ['#ff6b85', '#b81c1c', '#b8201a', '#b80d2e', '#c1271d', '#e45a4a', '#ff5a6e'],
@@ -601,7 +609,7 @@ async function programDevice(dev, target, summ) {
     const data = block.data;
     for (let offset = 0, blockNo = 0; offset < data.length; blockNo++) {
       const chunkSize = Math.min(dfuTransferSize, data.length - offset);
-//    log(`  Block ${blockNo} (${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 't');
+//    log(`  Block ${blockNo} (${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'i');
       await dfuDownload(dev, blockNo + 2, data.subarray(offset, offset + chunkSize));
       offset+= chunkSize;
       await waitForBusy(dev);
@@ -626,7 +634,7 @@ async function verifyDevice(dev, target, summ) {
     const readData = new Uint8Array(data.length);
     for (let blockNo = 0, offset = 0; offset < data.length; blockNo++) {
       const chunkSize = Math.min(dfuTransferSize, data.length - offset);
-//    log(`  Block ${blockNo} (reading ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 't');
+//    log(`  Block ${blockNo} (reading ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'i');
       try {
         const chunk = await dfuUpload(dev, blockNo + 2, chunkSize);
         if (chunk.length === 0) { log(`Empty response on block ${blockNo}`, 'w'); break; }
@@ -658,7 +666,7 @@ async function uploadDevice(dev, target, summ) {
     const data = block.data;
     for (let blockNo = 0, offset = 0; offset < data.length; blockNo++) {
       const chunkSize = Math.min(dfuTransferSize, data.length - offset);
-//    log(`  Block ${blockNo} (reading ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 't');
+//    log(`  Block ${blockNo} (reading ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'i');
       try {
         const chunk = await dfuUpload(dev, blockNo + 2, chunkSize);
         if (chunk.length === 0) { log(`Empty response on block ${blockNo}`, 'w'); break; }
