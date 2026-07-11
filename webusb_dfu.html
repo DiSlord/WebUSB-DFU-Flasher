@@ -64,7 +64,7 @@ h1 {
 }
 .help-box b { color: var(--btext); }
 .help { display: none; }
-.help h2, h3, h4 { margin: 10px 0 0 10px; }
+.help :is(h2, h3, h4) { margin: 10px 0 0 10px; }
 .help ul{ padding-inline-start: 10px; margin: 0 4px; }
 .help a { color: var(--success); }
 
@@ -242,15 +242,15 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   <div class="btn-row">
     <button id="btnFlash" class="btn-flash">Flash</button>
     <button id="btnVerify" class="btn-verify">Verify Only</button>
-    <button id="btnUploadDevice" class="btn-upload">Read from</button>
+    <button id="btnUpload" class="btn-upload">Read from</button>
   </div>
-  <div id="uploadPanel" class="upload-group">
+  <div id="uPanel" class="upload-group">
     <div class="btn-row">
-      <label>Start:</label><select id="uploadStartSelect" style="flex:1;"></select>
-      <label>End:</label><select id="uploadEndSelect" style="flex:1;"></select>
+      <label>Start:</label><select id="uStart" style="flex:1;"></select>
+      <label>End:</label><select id="uEnd" style="flex:1;"></select>
     </div>
     <div class="btn-row" style="margin-top: 6px">
-      <label>Upload:</label><label id="uploadTotalSize"></label>
+      <label>Upload:</label><label id="uTotalSize"></label>
     </div>
     <div class="btn-row" style="margin-top: 6px;">
       <button id="btnDoUpload" class="btn-flash">Upload</button>
@@ -335,7 +335,7 @@ const STATUS_NAMES = {
 };
 
 // DFU Attributes
-const DFU_CAN_DNLOAD = 1, DFU_CAN_UPLOAD = 2, DFU_MTOLERANT = 4, DFU_CAN_DEATACH = 8;
+const DFU_CAN_DNLOAD = 1, DFU_CAN_UPLOAD = 2, DFU_MTOLERANT = 4, DFU_CAN_DETACH = 8;
 
 // Custom commands (not from DFU specification)
 const CMD_SET_ADDRESS = 0x21;
@@ -356,11 +356,10 @@ const fileInfo = $('fileInfo');
 const flashAddress = $('flashAddress');
 const flashAddressPanel = $('flashAddressPanel');
 
-const uploadPanel = $('uploadPanel');
-const uploadStartSelect = $('uploadStartSelect');
-const uploadEndSelect = $('uploadEndSelect');
-const uploadTotalSize = $('uploadTotalSize');
-
+const uPanel = $('uPanel');
+const uStart = $('uStart');
+const uEnd = $('uEnd');
+const uTotalSize = $('uTotalSize');
 
 const btnConnect = $('btnConnect');
 const btnFile = $('btnFile');
@@ -368,7 +367,7 @@ const btnErase = $('btnErase');
 const btnVerifyAfter = $('btnVerifyAfter');
 const btnFlash = $('btnFlash');
 const btnVerify = $('btnVerify');
-const btnUploadDevice = $('btnUploadDevice');
+const btnUpload = $('btnUpload');
 const btnDoUpload = $('btnDoUpload');
 const btnSaveBin = $('btnSaveBin');
 
@@ -698,6 +697,7 @@ async function runOperation(doErase, doFlash, doVerify, doUpload, doReset) {
 const file_format = [
  {ext: 'bin', name: 'Binary',    parser: parseBinFile},
  {ext: 'dfu', name: 'DFU',       parser: parseDfuFile},
+ {ext: 'elf', name: 'Executable and Linkable Format', parser: parseElfFile },
  {ext: 'hex', name: 'Intel HEX', parser: parseHexFile},
  {ext: 'srec',name: 'Motorola S-Record', parser: parseSrecFile },
  {ext: 's19', name: 'Motorola S-Record', parser: parseSrecFile },
@@ -732,14 +732,14 @@ class FirmwareImage {
     const b = t.blocks;
     if (b.length < 2) return;
     const m = [];
-    for (let i = 0; i < b.length;) {
-      let j = i, size = b[i].data.length;
+    for (let i = 0, j; i < b.length; i = j + 1) {
+      j = i;
+      let size = b[i].data.length;
       while (j + 1 < b.length && b[j].end === b[j + 1].address) {j++; size += b[j].data.length;}
-      if (i === j) {m.push(b[i]); continue;}
+      if (i === j) { m.push(b[i]); continue; }
       const data = new Uint8Array(size);
-      for (let k = i, offset = 0; k <= j; k++) {data.set(b[k].data, offset); offset += b[k].data.length;}
-      m.push({address: b[i].address, end: b[j].end, data});
-      i = j + 1;
+      for (let k = i, offset = 0; k <= j; k++) { data.set(b[k].data, offset); offset += b[k].data.length; }
+      m.push({ address: b[i].address, end: b[j].end, data });
     }
     t.blocks = m;
   }
@@ -830,7 +830,7 @@ function parseDfuFile(buffer, image) {
     const targetIdx = image.targets.length;
     image.addTarget(altSetting, name);
 
-    log(` Target ${t}: alt=${altSetting}, <b>"${name}"</b>, ${numBlocks} block(s)`, 'i');
+    log(`&nbsp;Target ${t}: alt=${altSetting}, <b>"${name}"</b>, ${numBlocks} block(s)`, 'i');
 
     offset += DFU_TARGET_PREFIX_SIZE;
     const targetStartOffset = offset;
@@ -841,7 +841,7 @@ function parseDfuFile(buffer, image) {
       const elemSize = getU32(data, offset + 4);
       offset += DFU_ELEMENT_HEADER_SIZE;
       if (offset + elemSize > data.length) throw new Error(`Target ${t}, Block ${b}: data exceeds buffer`);
-      log(`  • Block ${b}: ${toHex(elemAddr)}..${toHex(elemAddr + elemSize - 1)} (${toSize(elemSize)})`, 'i');
+      log(`&nbsp;• Block ${b}: ${toHex(elemAddr)}..${toHex(elemAddr + elemSize - 1)} (${toSize(elemSize)})`, 'i');
       image.addBlock(targetIdx, elemAddr, data.subarray(offset, offset + elemSize));
       offset += elemSize;
     }
@@ -1009,6 +1009,48 @@ function parseSrecFile(buffer, image) {
   log(`SREC: ${typeNames[maxType] || 'unknown'}, ${dataRecords} records, ${image.totalBytes} bytes, entry: ${entryPoint ? toHex(entryPoint) : 'N/A'}`, 'i');
 }
 
+function parseElfFile(buffer, image) {
+  const data = new Uint8Array(buffer);
+  if (data.length < 52) throw new Error('ELF file too small');
+  if (getU32(data, 0) !== 0x464C457F) throw new Error('Invalid ELF signature');
+  if (data[4] !== 1 || data[5] !== 1) throw new Error('Only 32-bit little-endian ELF supported');
+  const e_phoff = getU32(data, 28);
+  const e_phentsize = getU16(data, 42);
+  const e_phnum = getU16(data, 44);
+  if (e_phoff + e_phnum * e_phentsize > data.length) throw new Error('Program header table extends beyond file end');
+  image.addTarget(0, 'ELF');
+  log(`ELF: 32-bit LE, ${e_phnum} program header(s), ${toSize(data.length)}`, 'i');
+  let blocks = 0;
+  for (let i = 0; i < e_phnum; i++) {
+    const offset = e_phoff + i * e_phentsize;
+    const p_type   = getU32(data, offset);
+    if (p_type !== 1) continue; // PT_LOAD
+    const p_offset = getU32(data, offset + 4);
+    const p_vaddr  = getU32(data, offset + 8);
+    const p_paddr  = getU32(data, offset + 12);
+    const p_filesz = getU32(data, offset + 16);
+    const p_memsz  = getU32(data, offset + 20);
+    const p_flags  = getU32(data, offset + 24);
+    if (p_filesz === 0) {
+      log(`&nbsp;• BSS ${toHex(p_paddr)} (${toSize(p_memsz)}) → SKIP`, 't');
+      continue;
+    }
+    if (p_offset + p_filesz > data.length) {
+      log(`&nbsp;• Block ${toHex(p_paddr)} → ERROR: data out of bounds`, 'e');
+      continue;
+    }
+    const segmentData = data.subarray(p_offset, p_offset + p_filesz);
+    image.addBlock(0, p_paddr, segmentData);
+    blocks++;
+    const flagsStr = `${p_flags & 0x4 ? 'R' : '-'}${p_flags & 0x2 ? 'W' : '-'}${p_flags & 0x1 ? 'X' : '-'}`;
+    const addrInfo = p_vaddr !== p_paddr ? `${toHex(p_paddr)} → ${toHex(p_vaddr)}` : toHex(p_paddr);
+    const bssInfo = p_memsz > p_filesz ? ` + ${toSize(p_memsz - p_filesz)} BSS` : '';
+    log(`&nbsp;• Block ${addrInfo} (${toSize(p_filesz)}${bssInfo}) [${flagsStr}] → ADDED`, 'i');
+  }
+  image.mergeBlocks(0);
+  log(`ELF: ${blocks} block(s) added, total ${toSize(image.totalBytes)}`, 'i');
+}
+
 function updateFileInfo(i) {
   if (!i) {fileInfo.innerHTML = ''; return;}
   let html = `<b>File:</b> ${i.fileName}, size: ${toSize(i.fileSize)} (${i.format.toUpperCase()})<br>`;
@@ -1121,7 +1163,7 @@ async function loadDeviceInfo(dev) {
   const canDownload = (dfuAttributes & DFU_CAN_DNLOAD) !== 0;
   const canUpload = (dfuAttributes & DFU_CAN_UPLOAD) !== 0;
   const manifestTolerant = (dfuAttributes & DFU_MTOLERANT) !== 0;
-  const willDetach = (dfuAttributes & DFU_CAN_DEATACH) !== 0;
+  const willDetach = (dfuAttributes & DFU_CAN_DETACH) !== 0;
 
   let attr = `${canDownload ? 'D' : ''}${canUpload ? 'U' : ''}${manifestTolerant ? 'M' : ''}${willDetach ? 'W' : ''}`;
   deviceInfo.style.display = 'block';
@@ -1195,12 +1237,12 @@ async function disconnectDevice() {
 // Upload data
 //================================
 function updateUploadRange() {
-  uploadStartSelect.innerHTML = '';
-  uploadEndSelect.innerHTML = '';
+  uStart.innerHTML = '';
+  uEnd.innerHTML = '';
   if (!device || memorySegments.length === 0) {
     btnDoUpload.disabled = true;
-    uploadEndSelect.innerHTML = uploadStartSelect.innerHTML = '<option>No device</option>';
-    uploadTotalSize.textContent = 'N/A';
+    uEnd.innerHTML = uStart.innerHTML = '<option>No device</option>';
+    uTotalSize.textContent = 'N/A';
     return;
   }
   const seg = memorySegments[0];
@@ -1215,22 +1257,22 @@ function updateUploadRange() {
       optStart.textContent = `${toHex(addr)} (${toSize(reg.sectorSize)})`;
       optEnd.value = addr + reg.sectorSize;
       optEnd.textContent = `${toHex(addr + reg.sectorSize - 1)}`;
-      uploadStartSelect.appendChild(optStart);
-      uploadEndSelect.appendChild(optEnd);
+      uStart.appendChild(optStart);
+      uEnd.appendChild(optEnd);
      addr += reg.sectorSize;
     }
   }
-  if (uploadStartSelect.options.length > 0) uploadStartSelect.value = uploadStartSelect.options[0].value;
-  if (uploadEndSelect.options.length > 0) uploadEndSelect.value = uploadEndSelect.options[uploadEndSelect.options.length - 1].value;
+  if (uStart.options.length > 0) uStart.value = uStart.options[0].value;
+  if (uEnd.options.length > 0) uEnd.value = uEnd.options[uEnd.options.length - 1].value;
   updateUploadSize();
 }
 
 function updateUploadSize() {
-  const start = parseInt(uploadStartSelect.value), end = parseInt(uploadEndSelect.value);
+  const start = parseInt(uStart.value), end = parseInt(uEnd.value);
   const size = end - start;
   const ok = size > 0;
-  uploadTotalSize.textContent = ok ? `${toHex(start)} .. ${toHex(end)} (${toSize(size)})` : 'Invalid range';
-  uploadTotalSize.style.color = ok ? 'var(--accent)' : 'var(--error)';
+  uTotalSize.textContent = ok ? `${toHex(start)} .. ${toHex(end)} (${toSize(size)})` : 'Invalid range';
+  uTotalSize.style.color = ok ? 'var(--accent)' : 'var(--error)';
   btnDoUpload.disabled = !ok;
 }
 
@@ -1241,8 +1283,8 @@ async function doUpload() {
     return;
   }
 
-  const start = parseInt(uploadStartSelect.value);
-  const totalSize = parseInt(uploadEndSelect.value) - start;
+  const start = parseInt(uStart.value);
+  const totalSize = parseInt(uEnd.value) - start;
   if (totalSize <= 0) throw new Error('Invalid range');
 
   const data = new Uint8Array(totalSize);
@@ -1307,7 +1349,7 @@ async function saveAsBin() {
 //================================
 // UI and button processing
 //================================
-let uPanel = false; // Hide/show upload panel flag
+let uPanelShow = false; // Hide/show upload panel flag
 
 // Disable (prevent click)
 function disableUI() {
@@ -1326,8 +1368,8 @@ function updateUI() {
 
   btnSaveBin.disabled = !(firmwareImage && firmwareImage.totalBlocks() === 1); // Alow save only one block in bin file
 
-  uploadPanel.style.display = uPanel ? 'block' : 'none';
-  btnUploadDevice.ariaPressed = uPanel;
+  uPanel.style.display = uPanelShow ? 'block' : 'none';
+  btnUpload.ariaPressed = uPanelShow;
 
   btnConnect.disabled = false;
   btnConnect.textContent = !!device ? 'Disconnect' : 'Connect to Device';
@@ -1351,11 +1393,11 @@ btnFile.addEventListener('click', () => fileInput.click());
 fileInput.setAttribute('accept', file_format.map(f => `.${f.ext}`).join(','));
 fileInput.addEventListener('change', (e) => {loadFile(e.target.files[0]); fileInput.value = '';});
 
-btnUploadDevice.addEventListener('click', () => {uPanel = !uPanel; updateUI();});
+btnUpload.addEventListener('click', () => {uPanelShow = !uPanelShow; updateUI();});
 btnDoUpload.addEventListener('click', doUpload);
 btnSaveBin.addEventListener('click', saveAsBin);
-uploadStartSelect.addEventListener('change', updateUploadSize);
-uploadEndSelect.addEventListener('change', updateUploadSize);
+uStart.addEventListener('change', updateUploadSize);
+uEnd.addEventListener('change', updateUploadSize);
 
 // Drag & drop support
 document.addEventListener('dragover', e => e.preventDefault());
@@ -1402,7 +1444,7 @@ updateUploadRange();
 </ul>
 <h4>Flash / Verify operation</h4>
 <ul>
- <li><b>Load Firmware:</b> Select or drag & drop a firmware file (.bin, .dfu, .hex, .srec)</li>
+ <li><b>Load Firmware:</b> Select or drag & drop a firmware file (.bin, .dfu, .elf, .hex, .srec)</li>
  <li><b>Configure Options:</b>
  <ul>
   <li>For BIN files: specify flash start address (default: 0x08000000)</li>
@@ -1449,6 +1491,7 @@ updateUploadRange();
 <ul>
  <li><b>.bin</b> — Raw binary (requires manual address)</li>
  <li><b>.dfu</b> — STMicroelectronics DfuSe format with CRC32</li>
+ <li><b>.elf</b> — Executable and Linkable Format (32-bit LE)</li>
  <li><b>.hex</b> — Intel HEX with extended addressing</li>
  <li><b>.srec/.s19/.s28/.s37</b> - Motorola S-Record</li>
 </ul>
@@ -1483,7 +1526,7 @@ updateUploadRange();
   <ul>
    <li>Chrome 86+ (recommended)</li>
    <li>Edge 86+</li>
-   <li>Opera 72+ (</li>
+   <li>Opera 72+</li>
    <li><i>Not supported: Firefox, Safari, Opera on Android</i></li>
   </ul>
  </li>
