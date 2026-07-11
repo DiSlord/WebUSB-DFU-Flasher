@@ -1036,11 +1036,13 @@ async function loadFile(file) {
     const image = new FirmwareImage(fileName, ext, buffer.byteLength);
     format.parser(buffer, image);
     firmwareImage = image;
-    updateFileInfo(firmwareImage);
     log(`${format.name} file loaded: ${toSize(image.totalBytes)}`, 's');
   } catch (err) {
     log(`File load error: ${err.message}`, 'e');
-  } finally {updateUI();}
+  } finally {
+    updateFileInfo(firmwareImage);
+    updateUI();
+  }
 }
 
 //================================
@@ -1245,7 +1247,7 @@ async function doUpload() {
   const data = new Uint8Array(totalSize);
   const name = `device_${toHex(start)}_${totalSize}b.bin`;
   const image = new FirmwareImage(name, 'dmp', totalSize);
-   image.addTarget(0, 'Device Dump');
+  image.addTarget(0, 'Device Dump');
   image.addBlock(0, start, data);
 
   const prevImage = firmwareImage;
@@ -1256,6 +1258,7 @@ async function doUpload() {
     firmwareImage = prevImage;
   } finally {
     updateFileInfo(firmwareImage);
+    updateUI();
   }
 }
 
@@ -1330,6 +1333,7 @@ function updateUI() {
   btnConnect.ariaPressed = !!device;
   deviceInfo.style.display = !!device ? '' : 'none';
 
+  btnFile.disabled = false;
   btnFile.textContent = firmwareImage ? `${firmwareImage.fileName} (${toSize(firmwareImage.fileSize)})` : `Select ${getSupportedExtensions()} file`;
   btnFile.ariaPressed = !!firmwareImage;
 
