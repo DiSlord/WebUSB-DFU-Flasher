@@ -9,7 +9,6 @@
  --fs-small: 14px;
  --fs-normal: 15px;
  --fs-large: 22px;
- 
  --font-sans: 'Segoe UI', system-ui, sans-serif;
  --font-mono: 'Consolas', monospace;
 }
@@ -42,76 +41,45 @@ h1 {
 }
 
 .container {
+ display: flex;
+ flex-direction: column;
  position: relative;
  background: var(--surface);
  padding: 10px;
+ border: 1px solid var(--border);
  border-radius: 6px;
  width: 100%;
  max-width: 600px;
- border: 1px solid var(--border);
- display: flex;
- flex-direction: column;
  gap: 6px;
 }
 
-#themeSelect {
- flex:1;
- font-size: var(--fs-small);
- letter-spacing: -0.8px;
- padding: 4px;
- max-width: 95px;
-}
-
-.info-box {
+/* Help/about information */
+.help-box {
  background: var(--bg);
  padding: 2px 5px;
  font-size: var(--fs-small);
+ border: 1px solid var(--border);
  border-radius: 6px;
  cursor: pointer;
 }
-.info-box b { color: var(--btext); }
+.help-box b { color: var(--btext); }
+.help { display: none; }
+.help h2, h3 { margin: 10px 0 0 10px; }
+.help ul{ padding-inline-start: 5px; margin: 0 4px; }
 
-.help {
+/* Theme  */
+#themeSelect {
+ flex:1;
+ max-width: 95px;
+}
+
+#fileInput {
  display: none;
 }
-.help h2, h3 {
- margin: 10px 0 0 10px;
-}
-.help ul{
- padding-inline-start: 5px;
- margin: 0 4px;
-}
 
-.device-info {
- background: var(--bg);
- font-family: var(--font-mono);
- font-size: var(--fs-small);
- letter-spacing: -0.8px;
- padding: 8px;
- border: 1px solid var(--border);
- border-radius: 6px;
-}
-.device-info b { color: var(--btext); }
-
-.upload-group {
- display: none;
- background: var(--uploadbg);
- font-size: var(--fs-normal);
- padding: 8px;
- border: 1px solid var(--border);
- border-radius: 6px;
-}
-
-.input-group {
- display: flex;
- flex-direction: column;
-}
-.input-group label {
- font-size: var(--fs-normal);
- gap: 3px;
-}
-.input-field {
- padding: 8px;
+/* All inputs: text, number, select */
+:is(input[type=text], input[type=number], select){
+ padding: 4px;
  background: var(--bg);
  color: var(--text);
  border: 1px solid var(--border);
@@ -120,40 +88,15 @@ h1 {
  font-size: var(--fs-small);
  letter-spacing: -0.8px;
 }
-.input-field:focus {
+:is(input, select):focus {
  outline: none;
  border-color: var(--btext);
 }
+input[type=checkbox] { width: 14px; height: 14px; cursor: pointer; }
 
-.file-input-wrapper {
- position: relative;
- width: 100%;
-}
-.file-input-wrapper input[type=file] {
- position: absolute;
- left: 0; top: 0;
- opacity: 0;
- width: 100%;
- height: 100%;
- cursor: pointer;
-}
-
-.file-label {
- color: var(--text);
- background: var(--btn_na);
- display: block;
- padding: 8px;
- border-radius: 6px;
- border: 1px solid var(--border);
- font-weight: 600;
- text-align: center;
- font-size: var(--fs-normal);
-}
-.file-label[aria-pressed="true"] { background: var(--connect); }
-
-.checkbox-group { display: flex; align-items: center; gap: 8px; }
-.checkbox-group input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
-.checkbox-group label { font-size: var(--fs-normal); cursor: pointer; }
+.btn-row { display: flex; gap: 6px; align-items: center; }
+.btn-column { display: flex; flex-direction: column; gap: 6px; }
+.btn-row label { font-size: var(--fs-normal); }
 
 button {
  color: var(--text);
@@ -166,10 +109,11 @@ button {
  flex: 1;
 }
 button:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-row { display: flex; gap: 10px; align-items: center; }
-.btn-column { display: flex; flex-direction: column; gap: 6px; }
+
 .btn-connect { background: var(--btn_na); }
 .btn-connect[aria-pressed="true"] { background: var(--connect); }
+.btn-file { background: var(--btn_na); }
+.btn-file[aria-pressed="true"] { background: var(--connect); }
 .btn-upload { background: var(--btn_na); }
 .btn-upload[aria-pressed="true"] { background: var(--connect); }
 .btn-flash { background: var(--flash); }
@@ -177,14 +121,23 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-verify { background: var(--verify); }
 .btn-git { background: var(--git); }
 
+.upload-group {
+ display: none;
+ background: var(--uploadbg);
+ font-size: var(--fs-normal);
+ padding: 8px;
+ border: 1px solid var(--border);
+ border-radius: 6px;
+}
+
 .progress-bar {
  width: 100%;
  background: var(--bg);
+ border: 1px solid var(--border);
  border-radius: 6px;
  overflow: hidden;
  min-height: 18px;
  position: relative;
- border: 1px solid var(--border);
 }
 .progress-fill {
  height: 100%; width: 0%;
@@ -197,6 +150,17 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
  font-size: var(--fs-normal);
  font-weight: bold;
 }
+
+.device-info {
+ background: var(--bg);
+ font-family: var(--font-mono);
+ font-size: var(--fs-small);
+ letter-spacing: -0.8px;
+ padding: 8px;
+ border: 1px solid var(--border);
+ border-radius: 6px;
+}
+.device-info b { color: var(--btext); }
 
 .log {
  background: var(--bg);
@@ -244,33 +208,33 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   padding: 4px;
  }
  .device-info { padding: 4px; }
- .log { padding: 4px; }
+ .log { padding: 4px; height: 150px; }
 }
 </style>
 </head>
 
 <body>
 <div class="container">
-  <div class="btn-row"><h1>WebUSB DFU Flasher</h1><select id="themeSelect" class="input-field"></select></div>
-  <div id="infoBox" class="info-box">
+  <div class="btn-row"><h1>WebUSB DFU Flasher</h1><select id="themeSelect"></select></div>
+  <div id="helpBox" class="help-box">
     Supports <b>STM32</b> (VID 0483) and <b>AT32</b> (VID 2E3C).
   </div>
   <button id="btnConnect" class="btn-connect"></button>
   <div id="deviceInfo" class="device-info"></div>
-  <div class="file-input-wrapper">
-    <div id="fileLabel" class="file-label"></div>
-    <input type="file" id="fileInput">
+  <div class="btn-row">
+   <button id="btnFile" class="btn-file"></button>
+   <input type="file" id="fileInput">
   </div>
   <div id="fileInfo" class="device-info"></div>
-  <div id="flashAddressPanel" class="input-group">
+  <div id="flashAddressPanel" class="btn-row">
     <label>Flash start address:</label>
-    <input type="text" id="flashAddress" class="input-field" value="0x08000000">
+    <input type="text" id="flashAddress" value="0x08000000">
   </div>
-   <div class="checkbox-group">
+   <div class="btn-row">
     <input type="checkbox" id="btnErase" checked>
     <label>Erase before flashing</label>
   </div>
-  <div class="checkbox-group">
+  <div class="btn-row">
     <input type="checkbox" id="btnVerifyAfter" checked>
     <label>Verify after flashing</label>
   </div>
@@ -281,8 +245,8 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   </div>
   <div id="uploadPanel" class="upload-group">
     <div class="btn-row">
-      <label>Start:</label><select id="uploadStartSelect" class="input-field" style="flex:1;"></select>
-      <label>End:</label><select id="uploadEndSelect" class="input-field" style="flex:1;"></select>
+      <label>Start:</label><select id="uploadStartSelect" style="flex:1;"></select>
+      <label>End:</label><select id="uploadEndSelect" style="flex:1;"></select>
     </div>
     <div class="btn-row" style="margin-top: 6px">
       <label>Upload:</label><label id="uploadTotalSize"></label>
@@ -378,7 +342,7 @@ const CMD_ERASE_PAGE = 0x41;
 
 // UI control
 const $ = id => document.getElementById(id);
-const infoBox = $('infoBox');
+const helpBox = $('helpBox');
 const deviceInfo = $('deviceInfo');
 const logEl = $('logEl');
 
@@ -386,7 +350,6 @@ const progressBar = $('progressBar');
 const progressText = $('progressText');
 
 const fileInput = $('fileInput');
-const fileLabel = $('fileLabel');
 const fileInfo = $('fileInfo');
 
 const flashAddress = $('flashAddress');
@@ -399,6 +362,7 @@ const uploadTotalSize = $('uploadTotalSize');
 
 
 const btnConnect = $('btnConnect');
+const btnFile = $('btnFile');
 const btnErase = $('btnErase');
 const btnVerifyAfter = $('btnVerifyAfter');
 const btnFlash = $('btnFlash');
@@ -1365,8 +1329,8 @@ function updateUI() {
   btnConnect.ariaPressed = !!device;
   deviceInfo.style.display = !!device ? '' : 'none';
 
-  fileLabel.textContent = firmwareImage ? `${firmwareImage.fileName} (${toSize(firmwareImage.fileSize)})` : `Select ${getSupportedExtensions()} file`;
-  fileLabel.ariaPressed = !!firmwareImage;
+  btnFile.textContent = firmwareImage ? `${firmwareImage.fileName} (${toSize(firmwareImage.fileSize)})` : `Select ${getSupportedExtensions()} file`;
+  btnFile.ariaPressed = !!firmwareImage;
 
   flashAddressPanel.style.display = firmwareImage?.format === 'bin' ? '' : 'none';
   fileInfo.style.display = !firmwareImage || firmwareImage.format === 'bin' ? 'none' : '';
@@ -1376,8 +1340,10 @@ function updateUI() {
 btnConnect.addEventListener('click', () => {!device ? connectDevice() : disconnectDevice();});
 btnFlash.addEventListener('click', () => {runOperation(btnErase.checked, true, btnVerifyAfter.checked, false, false);});
 btnVerify.addEventListener('click', () => runOperation(false, false, true, false, false));
+btnFile.addEventListener('click', () => fileInput.click());
+
 fileInput.setAttribute('accept', file_format.map(f => `.${f.ext}`).join(','));
-fileInput.addEventListener('change', (e) => {loadFile(e.target.files[0]);});
+fileInput.addEventListener('change', (e) => {loadFile(e.target.files[0]); fileInput.value = '';});
 
 btnUploadDevice.addEventListener('click', () => {uPanel = !uPanel; updateUI();});
 btnDoUpload.addEventListener('click', doUpload);
@@ -1390,9 +1356,9 @@ document.addEventListener('dragover', e => e.preventDefault());
 document.addEventListener('drop', async e => {e.preventDefault(); loadFile(e.dataTransfer.files[0]);});
 
 // Display/hide help content on click
-infoBox.addEventListener('click', () => {
-  const expanded = infoBox.classList.toggle('expanded');
-  if (expanded && !infoBox.contains(helpContent)) infoBox.appendChild(helpContent);
+helpBox.addEventListener('click', () => {
+  const expanded = helpBox.classList.toggle('expanded');
+  if (expanded && !helpBox.contains(helpContent)) helpBox.appendChild(helpContent);
   helpContent.style.display = expanded ? 'block' : 'none';
 });
 
