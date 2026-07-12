@@ -407,7 +407,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function toFloat(val, n = 1) {return parseFloat(val.toFixed(n));}
 function toHex(addr, size = 8) { return '0x' + addr.toString(16).toUpperCase().padStart(size, '0');}
-function toSize(val) {return val < 1024 ? val + ' bytes' : val < 1024*1024 ? toFloat(val/1024) + ' KB' : toFloat(val/1048576) + ' MB';}
+function toSize(val) {return val < 1024 ? val + ' B' : val < 1024*1024 ? toFloat(val/1024) + ' KB' : toFloat(val/1048576) + ' MB';}
 
 function getU16(d, o) {return  d[o]|(d[o+1]<<8);}
 function getU32(d, o) {return (d[o]|(d[o+1]<< 8)|(d[o+2]<<16)|(d[o+3]<<24))>>>0;}
@@ -704,7 +704,7 @@ const file_format = [
  {ext: 's28', name: 'Motorola S-Record', parser: parseSrecFile },
  {ext: 's37', name: 'Motorola S-Record', parser: parseSrecFile }
 ];
-function getSupportedExtensions() {return file_format.map(f => `.${f.ext}`).join(', ');}
+function getSupportedExtensions() {return file_format.map(f => f.ext).join(', ');}
 
 class FirmwareImage {
   constructor(fname, ext, size) {
@@ -1009,11 +1009,12 @@ function parseSrecFile(buffer, image) {
   log(`SREC: ${typeNames[maxType] || 'unknown'}, ${dataRecords} records, ${image.totalBytes} bytes, entry: ${entryPoint ? toHex(entryPoint) : 'N/A'}`, 'i');
 }
 
+// Executable and Linkable Format ELF parser
 function parseElfFile(buffer, image) {
   const data = new Uint8Array(buffer);
   if (data.length < 52) throw new Error('ELF file too small');
   if (getU32(data, 0) !== 0x464C457F) throw new Error('Invalid ELF signature');
-  if (data[4] !== 1 || data[5] !== 1) throw new Error('Only 32-bit little-endian ELF supported');
+  if (data[4] !== 1 || data[5] !== 1) throw new Error('Only 32-bit LE ELF supported');
   const e_phoff = getU32(data, 28);
   const e_phentsize = getU16(data, 42);
   const e_phnum = getU16(data, 44);
@@ -1031,21 +1032,23 @@ function parseElfFile(buffer, image) {
     const p_filesz = getU32(data, offset + 16);
     const p_memsz  = getU32(data, offset + 20);
     const p_flags  = getU32(data, offset + 24);
+
+    const flagsStr = `[${p_flags & 0x4 ? 'R' : '-'}${p_flags & 0x2 ? 'W' : '-'}${p_flags & 0x1 ? 'X' : '-'}]`;
+    const sizeStr = p_memsz !== p_filesz ? (p_filesz === 0 ? `${toSize(p_memsz)} bss` : `${toSize(p_filesz)} → ${toSize(p_memsz)}`) : toSize(p_filesz);
+    const vaddrStr = p_vaddr !== p_paddr ? ` → ${toHex(p_vaddr)}` : '';
+    const base = `&nbsp;• ${toHex(p_paddr)} ${flagsStr} (${sizeStr})${vaddrStr}`;
+
     if (p_filesz === 0) {
-      log(`&nbsp;• BSS ${toHex(p_paddr)} (${toSize(p_memsz)}) → SKIP`, 't');
+      log(`${base} SKIP`, 't');
       continue;
     }
     if (p_offset + p_filesz > data.length) {
-      log(`&nbsp;• Block ${toHex(p_paddr)} → ERROR: data out of bounds`, 'e');
+      log(`${base} ERROR: data out of bounds`, 'e');
       continue;
     }
-    const segmentData = data.subarray(p_offset, p_offset + p_filesz);
-    image.addBlock(0, p_paddr, segmentData);
+    image.addBlock(0, p_paddr, data.subarray(p_offset, p_offset + p_filesz));
     blocks++;
-    const flagsStr = `${p_flags & 0x4 ? 'R' : '-'}${p_flags & 0x2 ? 'W' : '-'}${p_flags & 0x1 ? 'X' : '-'}`;
-    const addrInfo = p_vaddr !== p_paddr ? `${toHex(p_paddr)} → ${toHex(p_vaddr)}` : toHex(p_paddr);
-    const bssInfo = p_memsz > p_filesz ? ` + ${toSize(p_memsz - p_filesz)} BSS` : '';
-    log(`&nbsp;• Block ${addrInfo} (${toSize(p_filesz)}${bssInfo}) [${flagsStr}] → ADDED`, 'i');
+    log(base, 'i');
   }
   image.mergeBlocks(0);
   log(`ELF: ${blocks} block(s) added, total ${toSize(image.totalBytes)}`, 'i');
