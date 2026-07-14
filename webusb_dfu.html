@@ -14,6 +14,7 @@
 }
 
 .t { --c: var(--time); }
+.n { --c: var(--time); }
 .i { --c: var(--accent); }
 .s { --c: var(--success); }
 .w { --c: var(--warn); }
@@ -24,8 +25,7 @@ body {
  padding: 10px;
  background: var(--bg);
  color: var(--text);
- font-family: var(--font-sans);
- font-size: var(--fs-normal);
+ font: var(--fs-normal) var(--font-sans);
  display: flex;
  justify-content: center;
 }
@@ -85,8 +85,7 @@ h1 {
  color: var(--text);
  border: 1px solid var(--border);
  border-radius: 6px;
- font-family: var(--font-mono);
- font-size: var(--fs-small);
+ font: var(--fs-small) var(--font-mono);
  letter-spacing: -0.8px;
 }
 :is(input, select):focus {
@@ -111,12 +110,8 @@ button {
 }
 button:disabled { opacity: 0.6; cursor: not-allowed; }
 
-.btn-connect { background: var(--btn_na); }
-.btn-connect[aria-pressed="true"] { background: var(--connect); }
-.btn-file { background: var(--btn_na); }
-.btn-file[aria-pressed="true"] { background: var(--connect); }
-.btn-upload { background: var(--btn_na); }
-.btn-upload[aria-pressed="true"] { background: var(--connect); }
+.btn-toggle { background: var(--ntoggle); }
+.btn-toggle[aria-pressed="true"] { background: var(--toggle); }
 .btn-flash { background: var(--flash); }
 .btn-save { background: var(--save); }
 .btn-verify { background: var(--verify); }
@@ -152,38 +147,25 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
  font-weight: bold;
 }
 
-.device-info {
+.device-info, .log {
  background: var(--bg);
- font-family: var(--font-mono);
- font-size: var(--fs-small);
+ font: var(--fs-small)/1.05 var(--font-mono);
  letter-spacing: -0.8px;
  padding: 8px;
  border: 1px solid var(--border);
  border-radius: 6px;
+ word-break: break-word;
+ white-space: break-spaces;
 }
 .device-info b { color: var(--btext); }
 
 .log {
- background: var(--bg);
- font-family: var(--font-mono);
- font-size: var(--fs-small);
- letter-spacing: -0.8px;
- padding: 8px;
- border: 1px solid var(--border);
- border-radius: 6px;
  height: 280px;
  overflow-y: auto;
 }
-
-.log div {
-  display: flex;
-  gap: 4px;
-}
-.log span:not(.t) {
-  flex: 1;
-  word-break: break-word;
-}
-.log :is(.t,.e,.w,.i,.s) { color: var(--c); }
+.log div { display: flex; gap: 4px; }
+.log span:not(.t) { flex: 1; }
+.log :is(.t,.n,.e,.w,.i,.s) { color: var(--c); }
 
 .info {
  font-size: var(--fs-small);
@@ -207,9 +189,10 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   border: none;
   width: 100vw;
   padding: 4px;
+  gap: 3px;
  }
- .device-info { padding: 4px; }
- .log { padding: 4px; height: 150px; }
+ .device-info, .log { padding: 4px; }
+ .log { height: 150px; }
 }
 </style>
 </head>
@@ -220,10 +203,10 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   <div id="helpBox" class="help-box">
     Supports <b>STM32</b> (VID 0483) and <b>AT32</b> (VID 2E3C).
   </div>
-  <button id="btnConnect" class="btn-connect"></button>
+  <button id="btnConnect" class="btn-toggle"></button>
   <div id="deviceInfo" class="device-info"></div>
   <div class="btn-row">
-   <button id="btnFile" class="btn-file"></button>
+   <button id="btnFile" class="btn-toggle"></button>
    <input type="file" id="fileInput">
   </div>
   <div id="fileInfo" class="device-info"></div>
@@ -232,17 +215,17 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
     <input type="text" id="flashAddress" value="0x08000000">
   </div>
    <div class="btn-row">
-    <input type="checkbox" id="btnErase" checked>
+    <input type="checkbox" id="chkErase" checked>
     <label>Erase before flashing</label>
   </div>
   <div class="btn-row">
-    <input type="checkbox" id="btnVerifyAfter" checked>
+    <input type="checkbox" id="chkVerify" checked>
     <label>Verify after flashing</label>
   </div>
   <div class="btn-row">
     <button id="btnFlash" class="btn-flash">Flash</button>
     <button id="btnVerify" class="btn-verify">Verify Only</button>
-    <button id="btnUpload" class="btn-upload">Read from</button>
+    <button id="btnUpload" class="btn-toggle">Read from</button>
   </div>
   <div id="uPanel" class="upload-group">
     <div class="btn-row">
@@ -262,7 +245,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
     <div id="progressText" class="progress-text">0%</div>
   </div>
   <div id="logEl" class="log"></div>
-  <div class="info">WebUSB DFU Flasher v2.2 ©️2019-2026 DiSlord (dislordlive@gmail.com)</div>
+  <div class="info">WebUSB DFU Flasher v2.3 ©️2019-2026 DiSlord (dislordlive@gmail.com)</div>
 </div>
 
 <script>
@@ -275,8 +258,8 @@ const themes = {
  '--border'  : ['#505050', '#b0b0b8', '#d5c4a1', '#ccd0da', '#dadce0', '#504040', '#304048'],
  '--text'    : ['#f0f0ff', '#000000', '#202020', '#202020', '#202124', '#e8dcc8', '#f0f0ff'],
  '--btext'   : ['#00e000', '#028800', '#79740e', '#40a02b', '#188038', '#d4a547', '#4ac8e0'],
- '--btn_na'  : ['#252535', '#e0e0e8', '#ebdbb2', '#ccd0da', '#f1f3f4', '#3a3028', '#252d45'],
- '--connect' : ['#2196F3', '#20e0e0', '#458588', '#1e66f5', '#1a73e8', '#4a8db8', '#3a7bd4'],
+ '--ntoggle' : ['#252535', '#e0e0e8', '#ebdbb2', '#ccd0da', '#f1f3f4', '#3a3028', '#252d45'],
+ '--toggle'  : ['#2196F3', '#20e0e0', '#458588', '#1e66f5', '#1a73e8', '#4a8db8', '#3a7bd4'],
  '--flash'   : ['#028800', '#30d040', '#98971a', '#40a02b', '#188038', '#6b9e4a', '#2ab87a'],
  '--verify'  : ['#ff8000', '#e09000', '#d65d0e', '#fe640b', '#f9ab00', '#d48a3a', '#e0a040'],
  '--save'    : ['#2196F3', '#50b0e0', '#458588', '#1e66f5', '#1a73e8', '#4a8db8', '#3a7bd4'],
@@ -363,8 +346,8 @@ const uTotalSize = $('uTotalSize');
 
 const btnConnect = $('btnConnect');
 const btnFile = $('btnFile');
-const btnErase = $('btnErase');
-const btnVerifyAfter = $('btnVerifyAfter');
+const chkErase = $('chkErase');
+const chkVerify = $('chkVerify');
 const btnFlash = $('btnFlash');
 const btnVerify = $('btnVerify');
 const btnUpload = $('btnUpload');
@@ -411,6 +394,9 @@ function toSize(val) {return val < 1024 ? val + ' B' : val < 1024*1024 ? toFloat
 
 function getU16(d, o) {return  d[o]|(d[o+1]<<8);}
 function getU32(d, o) {return (d[o]|(d[o+1]<< 8)|(d[o+2]<<16)|(d[o+3]<<24))>>>0;}
+
+function getU16be(d, o) {return  d[o+1]|(d[o]<<8);}
+function getU32be(d, o) {return (d[o+3]|(d[o+2]<< 8)|(d[o+1]<<16)|(d[o]<<24))>>>0;}
 
 function parseAddress(str) {
   str = str.trim().toLowerCase();
@@ -534,7 +520,7 @@ function getSectorInfo(addr) {
   for (const seg of memorySegments)
     for (const reg of seg.regions)
       if (addr >= reg.startAddress && addr <= reg.endAddress)
-        return { size: reg.sectorSize, e: reg.erasable, w: reg.writable };
+        return { size: reg.size, e: reg.e, w: reg.w };
   return { size: dfuTransferSize, e: false, w: false }; // fallback
 }
 
@@ -553,7 +539,7 @@ async function eraseDevice(dev, target) {
   }
   log(`  Erasing ${s.length} sectors`, 's');
   for (let i = 0; i < s.length; i++) {
-//  log(`  Sector @ ${toHex(s[i])}`, 't');
+//  log(`  Sector @ ${toHex(s[i])}`, 'n');
     await dfuseErasePage(dev, s[i]);
     updateProgress(i + 1, s.length);
   }
@@ -573,7 +559,7 @@ async function programDevice(dev, target, summ) {
     const data = block.data;
     for (let offset = 0, blockNo = 0; offset < data.length; blockNo++) {
       const chunkSize = Math.min(dfuTransferSize, data.length - offset);
-//    log(`  Block ${blockNo} (${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'i');
+//    log(`  Block ${blockNo} (${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'n');
       await dfuDownload(dev, blockNo + 2, data.subarray(offset, offset + chunkSize));
       offset+= chunkSize;
       await waitForBusy(dev);
@@ -598,7 +584,7 @@ async function verifyDevice(dev, target, summ) {
     const readData = new Uint8Array(data.length);
     for (let blockNo = 0, offset = 0; offset < data.length; blockNo++) {
       const chunkSize = Math.min(dfuTransferSize, data.length - offset);
-//    log(`  Block ${blockNo} (reading ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'i');
+//    log(`  Block ${blockNo} (reading ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'n');
       try {
         const chunk = await dfuUpload(dev, blockNo + 2, chunkSize);
         if (chunk.length === 0) { log(`Empty response on block ${blockNo}`, 'w'); break; }
@@ -630,7 +616,7 @@ async function uploadDevice(dev, target, summ) {
     const data = block.data;
     for (let blockNo = 0, offset = 0; offset < data.length; blockNo++) {
       const chunkSize = Math.min(dfuTransferSize, data.length - offset);
-//    log(`  Block ${blockNo} (reading ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'i');
+//    log(`  Block ${blockNo} (reading ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'n');
       try {
         const chunk = await dfuUpload(dev, blockNo + 2, chunkSize);
         if (chunk.length === 0) { log(`Empty response on block ${blockNo}`, 'w'); break; }
@@ -713,10 +699,9 @@ class FirmwareImage {
     this.fileSize = size;
     this.targets = [];
     this.totalBytes = 0;
-    this.vid = null;
-    this.pid = null;
-    this.dfuVersion = null;
+    this.info = new Map();
   }
+  addInfo(key, value) { this.info.set(key, value); }
   addTarget(altSetting, name = '') {this.targets.push({altSetting, name, blocks: []});}
   getTarget(id) {
     if (id >= this.targets.length) throw new Error(`Target ${id} not found`);
@@ -762,6 +747,8 @@ function calculateDfuCrc(data) {
   for (const byte of data) for(bits = 8, crc ^= byte; bits--; crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0));
   return crc >>> 0;
 }
+
+function getEntry(e) { return `${toHex(e&~1)}${(e&1)?' (Thumb)' : ''}`; }
 
 function parseHexLine(lineNo, str, offset, expectedChecksum) {
   const len = (str.length - offset) >> 1;
@@ -830,7 +817,7 @@ function parseDfuFile(buffer, image) {
     const targetIdx = image.targets.length;
     image.addTarget(altSetting, name);
 
-    log(`&nbsp;Target ${t}: alt=${altSetting}, <b>"${name}"</b>, ${numBlocks} block(s)`, 'i');
+    log(` Target ${t}: alt=${altSetting}, <b>"${name}"</b>, ${numBlocks} block(s)`, 'i');
 
     offset += DFU_TARGET_PREFIX_SIZE;
     const targetStartOffset = offset;
@@ -841,7 +828,7 @@ function parseDfuFile(buffer, image) {
       const elemSize = getU32(data, offset + 4);
       offset += DFU_ELEMENT_HEADER_SIZE;
       if (offset + elemSize > data.length) throw new Error(`Target ${t}, Block ${b}: data exceeds buffer`);
-      log(`&nbsp;• Block ${b}: ${toHex(elemAddr)}..${toHex(elemAddr + elemSize - 1)} (${toSize(elemSize)})`, 'i');
+      log(` • Block ${b}: ${toHex(elemAddr)}..${toHex(elemAddr + elemSize - 1)} (${toSize(elemSize)})`, 'i');
       image.addBlock(targetIdx, elemAddr, data.subarray(offset, offset + elemSize));
       offset += elemSize;
     }
@@ -851,9 +838,9 @@ function parseDfuFile(buffer, image) {
 
   // DFU Suffix (16 bytes)
   if (offset + DFU_SUFFIX_SIZE !== data.length) throw new Error(`DFU suffix position mismatch: expected ${offset + DFU_SUFFIX_SIZE}, got ${data.length}`);
-  image.pid = getU16(data, offset + 2);
-  image.vid = getU16(data, offset + 4);
-  image.dfuVersion = getU16(data, offset + 6);
+  const pid = getU16(data, offset + 2);
+  const vid = getU16(data, offset + 4);
+  const dfuVersion = getU16(data, offset + 6);
   const suffixSig = String.fromCharCode(...data.subarray(offset + 8, offset + 11));
   if (suffixSig !== DFU_SUFFIX_SIGNATURE) throw new Error(`Invalid DFU suffix signature: '${suffixSig}'`);
   if (data[offset + 11] !== 16) throw new Error(`Invalid DFU suffix length: ${data[offset + 11]}`);
@@ -863,8 +850,12 @@ function parseDfuFile(buffer, image) {
   const calculatedCrc = calculateDfuCrc(data.subarray(0, data.length - 4));
   if (storedCrc !== calculatedCrc) throw new Error(`Invalid CRC stored=${toHex(storedCrc, 8)}, calculated=${toHex(calculatedCrc, 8)}`);
 
-  log(` Version: ${toHex(image.dfuVersion, 4)}, ${toSize(image.totalBytes)} total, CRC: ${toHex(calculatedCrc, 8)}`, 'i');
-  if (image.vid || image.pid) log(` VID:PID: ${toHex(image.vid, 4)}:${toHex(image.pid, 4)}`, 'i');
+  image.addInfo('DfuSe Version', `v${version}`);
+  image.addInfo('VID:PID', `${toHex(vid, 4)}:${toHex(pid, 4)}`);
+  image.addInfo('DFU Spec', toHex(dfuVersion, 4));
+
+  if (vid || pid) log(`VID:PID: ${toHex(vid, 4)}:${toHex(pid, 4)}`, 'i');
+  log(`DFU Spec: ${toHex(dfuVersion, 4)}, CRC: ${toHex(calculatedCrc, 8)}`, 'i');
 }
 
 // Intel HEX Parser
@@ -874,23 +865,21 @@ function parseDfuFile(buffer, image) {
 //  TT - record type (1 byte)
 //  DD - data bytes
 //  CC - checksum (1 byte, two's complement of sum of all bytes)
-const HEX_DATA = 0x00, HEX_EOF = 0x01, HEX_EXT_SEG = 0x02, HEX_START_SEG = 0x03, HEX_EXT_LIN = 0x04, HEX_START_LIN = 0x05;
-const HEX_RECORDS = {
-  [HEX_DATA]:      { action: 'data',   dataLen: null },
-  [HEX_EOF]:       { action: 'eof',    dataLen: 0 },
-  [HEX_EXT_SEG]:   { action: 'extseg', dataLen: 2 },
-  [HEX_START_SEG]: { action: 'skip',   dataLen: 4 },
-  [HEX_EXT_LIN]:   { action: 'extlin', dataLen: 2 },
-  [HEX_START_LIN]: { action: 'skip',   dataLen: 4 },
-};
+const HEX_RECORDS = [
+  { type: 'data',   len: null },
+  { type: 'eof',    len: 0 },
+  { type: 'extseg', len: 2 },
+  { type: 'seg_ep', len: 4 },
+  { type: 'extlin', len: 2 },
+  { type: 'lin_ep', len: 4 },
+];
 
 function parseHexFile(buffer, image) {
   image.addTarget(0, 'Intel HEX');
   const text = new TextDecoder('ascii').decode(buffer);
   const lines = text.split(/\r?\n/);
 
-  let baseAddr = 0, lineNo = 0, dataRecords = 0, eof = false;
-
+  let baseAddr = 0, lineNo = 0, dataRecords = 0, eof = false, entry = null;
   for (const raw of lines) {
     lineNo++;
     const s = raw.trim();
@@ -902,37 +891,27 @@ function parseHexFile(buffer, image) {
 
     const bytes = parseHexLine(lineNo, s, 1, 0x00); //Parse hex (offset: 1, CRC: 0x00)
     const len = bytes[0];
-    const addr = (bytes[1] << 8) | bytes[2];
+    const addr = getU16be(bytes, 1);
     const type = bytes[3];
 
     const rec = HEX_RECORDS[type];
-    if (!rec) throw new Error(`Line ${lineNo}: unknown record type 0x${type.toString(16).padStart(2, '0')}`);
-    if (rec.dataLen !== null && len !== rec.dataLen) {
-      throw new Error(`Line ${lineNo}: invalid data length for type 0x${type.toString(16).padStart(2, '0')}`);
-    }
+    if (!rec) throw new Error(`Line ${lineNo}: unknown record type ${toHex(type,2)}`);
+    if (rec.len !== null && len !== rec.len) throw new Error(`Line ${lineNo}: invalid data length for type ${toHex(type,2)}`);
     if (4 + len > bytes.length) throw new Error(`Line ${lineNo}: data overflow`);
 
-    switch (rec.action) {
-      case 'data':
-        image.addBlock(0, baseAddr + addr, bytes.subarray(4, 4 + len));
-        dataRecords++;
-        break;
-      case 'eof':
-        eof = true;
-        break;
-      case 'extseg':
-        baseAddr = ((bytes[4] << 8) | bytes[5]) << 4;
-        break;
-      case 'extlin':
-        baseAddr = ((bytes[4] << 8) | bytes[5]) << 16;
-        break;
-      case 'skip':
-        break;
+    switch (rec.type) {
+      case 'data': image.addBlock(0, baseAddr + addr, bytes.subarray(4, 4 + len)); dataRecords++; break;
+      case 'eof': eof = true; break;
+      case 'extseg': baseAddr = getU16be(bytes, 4) << 4; break;
+      case 'extlin': baseAddr = getU16be(bytes, 4) <<16; break;
+      case 'lin_ep': entry = getU32be(bytes, 4); break;
+      case 'seg_ep': entry =(getU16be(bytes, 4)<<4)+getU16be(bytes, 6); break;
     }
     if (eof) break;
   }
   image.mergeBlocks(0); // Merge collected data in blocks
   if (!eof) log('HEX: EOF record not found', 'w');
+  if (entry !== null) image.addInfo('Entry point', getEntry(entry));
   log(`HEX: ${dataRecords} records, ${toSize(image.totalBytes)}`, 'i');
 }
 
@@ -966,7 +945,7 @@ function parseSrecFile(buffer, image) {
   const lines = text.split(/\r?\n/);
 
   let lineNo = 0, dataRecords = 0;
-  let entryPoint = null, maxType = 0;
+  let entry = null, maxType = 0;
 
   for (const raw of lines) {
     lineNo++;
@@ -995,8 +974,8 @@ function parseSrecFile(buffer, image) {
       }
       case 'end': {
         if (bytes.length > addrLen) {
-          entryPoint = 0;
-          for (let i = 0; i < addrLen; i++) entryPoint = (entryPoint << 8) | bytes[1 + i];
+          entry = 0;
+          for (let i = 0; i < addrLen; i++) entry = (entry << 8) | bytes[1 + i];
         }
         break;
       }
@@ -1005,22 +984,36 @@ function parseSrecFile(buffer, image) {
     }
   }
   image.mergeBlocks(0); // Merge collected data in blocks
-  const typeNames = { 1: 'S19 (16-bit)', 2: 'S28 (24-bit)', 3: 'S37 (32-bit)' };
-  log(`SREC: ${typeNames[maxType] || 'unknown'}, ${dataRecords} records, ${image.totalBytes} bytes, entry: ${entryPoint ? toHex(entryPoint) : 'N/A'}`, 'i');
+  const type = {1:'S19 (16-bit)',2:'S28 (24-bit)',3:'S37 (32-bit)'}[maxType] || 'unknown';
+  image.addInfo('Type', type);
+  if (entry) image.addInfo('Entry point', getEntry(entry));
+  log(`SREC: ${type}, ${dataRecords} records, ${image.totalBytes} bytes`, 'i');
 }
 
 // Executable and Linkable Format ELF parser
+const ELF_MACHINES = {0x00:'None',0x02:'SPARC',0x03:'x86',0x08:'MIPS',0x14:'PowerPC',0x28:'ARM',0x2A:'SuperH',0x3E:'x86-64',0xB7:'AArch64',0xF3:'RISC-V'};
+const ELF_OSABI = {0x00:'Bare-Metal',0x01:'HP-UX',0x02:'NetBSD',0x03:'Linux',0x06:'Solaris',0x09:'AIX',0x0C:'FreeBSD',0xFF:'Standalone'};
 function parseElfFile(buffer, image) {
   const data = new Uint8Array(buffer);
   if (data.length < 52) throw new Error('ELF file too small');
   if (getU32(data, 0) !== 0x464C457F) throw new Error('Invalid ELF signature');
   if (data[4] !== 1 || data[5] !== 1) throw new Error('Only 32-bit LE ELF supported');
+  const ei_osabi = data[7];
+  const e_machine = getU16(data, 18);
+  const e_entry = getU32(data, 24);
   const e_phoff = getU32(data, 28);
   const e_phentsize = getU16(data, 42);
   const e_phnum = getU16(data, 44);
   if (e_phoff + e_phnum * e_phentsize > data.length) throw new Error('Program header table extends beyond file end');
   image.addTarget(0, 'ELF');
+
+  image.addInfo('Format', '32-bit LE');
+  image.addInfo('Architecture, OS/ABI', `${ELF_MACHINES[e_machine] || toHex(e_machine, 4)}, ${ELF_OSABI[ei_osabi] || toHex(ei_osabi, 2)}`);
+  image.addInfo('Entry point', getEntry(e_entry));
+
   log(`ELF: 32-bit LE, ${e_phnum} program header(s), ${toSize(data.length)}`, 'i');
+
+  if (e_machine !== 0x28) log(`⚠️ Non-ARM architecture detected`, 'w');
   let blocks = 0;
   for (let i = 0; i < e_phnum; i++) {
     const offset = e_phoff + i * e_phentsize;
@@ -1036,10 +1029,10 @@ function parseElfFile(buffer, image) {
     const flagsStr = `[${p_flags & 0x4 ? 'R' : '-'}${p_flags & 0x2 ? 'W' : '-'}${p_flags & 0x1 ? 'X' : '-'}]`;
     const sizeStr = p_memsz !== p_filesz ? (p_filesz === 0 ? `${toSize(p_memsz)} bss` : `${toSize(p_filesz)} → ${toSize(p_memsz)}`) : toSize(p_filesz);
     const vaddrStr = p_vaddr !== p_paddr ? ` → ${toHex(p_vaddr)}` : '';
-    const base = `&nbsp;• ${toHex(p_paddr)} ${flagsStr} (${sizeStr})${vaddrStr}`;
+    const base = ` • ${toHex(p_paddr)} ${flagsStr} (${sizeStr})${vaddrStr}`;
 
     if (p_filesz === 0) {
-      log(`${base} SKIP`, 't');
+      log(`${base} SKIP`, 'n');
       continue;
     }
     if (p_offset + p_filesz > data.length) {
@@ -1057,14 +1050,13 @@ function parseElfFile(buffer, image) {
 function updateFileInfo(i) {
   if (!i) {fileInfo.innerHTML = ''; return;}
   let html = `<b>File:</b> ${i.fileName}, size: ${toSize(i.fileSize)} (${i.format.toUpperCase()})<br>`;
+  for (const [key, value] of i.info) html += `<b>${key}:</b> ${value}<br>`;
   html += `<b>Data:</b> ${i.totalBytes} bytes in ${i.totalBlocks()} block(s)<br>`;
-  if (i.format === 'dfu')
-    html += `<b>VID:PID:</b> ${toHex(i.vid, 4)}:${toHex(i.pid, 4)}<br>`;
   for (const [t, target] of i.targets.entries()) {
     html += `<b>Target ${t}:</b> ${target.name || 'unnamed'} (alt=${target.altSetting})<br>`;
     for (const [e, block] of target.blocks.entries()) {
       const range = i.format === 'bin' ? '<b>Flash start address</b>' : `${toHex(block.address)}..${toHex(block.address + block.data.length - 1)}`;
-      html += `&nbsp;• Block ${e}: ${range} (${toSize(block.data.length)})<br>`;
+      html += ` • Block ${e}: ${range} (${toSize(block.data.length)})<br>`;
     }
   }
   fileInfo.innerHTML = html;
@@ -1097,6 +1089,7 @@ async function loadFile(file) {
 // Parse memory segment from DfuSe format
 // Expected pattern: "@Name /0xADDR/ sectors"
 //  @Internal Flash  /0x08000000/ 512*2Kg
+//  @Internal Flash /0x08000000/03*016Ka,01*016Kg,01*064Kg,07*128Kg
 //  @Option Byte   /0x1FFFF800/01*048 e
 function parseMemorySegment(name, altSetting) {
   if (!name || !name.startsWith('@')) return null;
@@ -1107,25 +1100,22 @@ function parseMemorySegment(name, altSetting) {
   for (let i = 1; i < parts.length - 1; i += 2) {
     let address = parseInt(parts[i], 16);
     if (isNaN(address)) continue;
-
     const sectors = parts[i + 1].split(',').map(s => s.trim());
     for (const sec of sectors) {
       const m = sec.match(/^(\d+)\s*\*\s*(\d+)\s*([KM]?)\s*([a-g])$/i);
       if (!m) continue;
-      const count = +m[1], mult = m[3].toUpperCase(), type = m[4].toLowerCase();
-      let size = +m[2];
-      if (mult === 'K') size *= 1024;
-      else if (mult === 'M') size *= 1048576;
+      const count = +m[1];
+      const size = +m[2] * ({ K: 1024, M: 1048576 }[m[3].toUpperCase()] || 1);
+      const RWE = 'abcdefg'.indexOf(m[4].toLowerCase()) + 1; // a=1 ... g=7
       regions.push({
        startAddress: address,
-       endAddress: address + count * size - 1,
+       endAddress: (address += count * size) - 1,
        sectorCount: count,
-       sectorSize: size,
-       readable: 'aceg'.includes(type),
-       writable: 'defg'.includes(type),
-       erasable: 'bcfg'.includes(type)
+       size: size,
+       r: (RWE & 1) !== 0, // readable
+       e: (RWE & 2) !== 0, // erasable
+       w: (RWE & 4) !== 0, // writable
      });
-     address += count * size;
    }
   }
   return { alt: altSetting, str: name, name: segName, regions };
@@ -1167,24 +1157,26 @@ async function loadDeviceInfo(dev) {
   const canUpload = (dfuAttributes & DFU_CAN_UPLOAD) !== 0;
   const manifestTolerant = (dfuAttributes & DFU_MTOLERANT) !== 0;
   const willDetach = (dfuAttributes & DFU_CAN_DETACH) !== 0;
-
-  let attr = `${canDownload ? 'D' : ''}${canUpload ? 'U' : ''}${manifestTolerant ? 'M' : ''}${willDetach ? 'W' : ''}`;
+  const attr = `${canDownload ? 'D' : ''}${canUpload ? 'U' : ''}${manifestTolerant ? 'M' : ''}${willDetach ? 'W' : ''}`;
+  let h = `<b>Manufacturer:</b> ${dev.manufacturerName || 'Unknown'}<br>`;
+  h+= `<b>Device:</b> ${dev.productName || 'Unknown'}<br>`;
+  h+= `<b>Serial:</b> ${dev.serialNumber || 'N/A'}<br>`;
+  h+= `<b>VID:PID:</b> ${toHex( dev.vendorId, 4)}:${toHex(dev.productId, 4)}<br>`;
+  h+= `<b>DFU Interface:</b> ${dfuInterface}<br>`;
+  h+= `<b>DFU Version:</b> ${toHex(dfuVersion, 4)}<br>`;
+  h+= `<b>wTransferSize:</b> ${dfuTransferSize} bytes<br>`;
+  h+= `<b>bmAttributes:</b> ${toHex(dfuAttributes, 2)} [${attr}]<br>`;
+  h+= `<b>Alt settings:</b>`;
+  for (const seg of memorySegments) {
+    const sep = seg.regions.length > 1 ? '<br>   ' : ' ';
+    const lines = seg.regions.map(b => {
+      const flags = `${b.r ? 'R' : ''}${b.w ? 'W' : ''}${b.e ? 'E' : ''}` || '-';
+      return `${toHex(b.startAddress)}..${toHex(b.endAddress)} (${b.sectorCount}×${toSize(b.size)}, ${flags})`;
+    });
+    h+= `<br> • <b>${seg.name}</b>:${sep}${lines.join(sep)}`;
+  }
   deviceInfo.style.display = 'block';
-  deviceInfo.innerHTML = `
-    <b>Manufacturer:</b> ${dev.manufacturerName || 'Unknown'}<br>
-    <b>Device:</b> ${dev.productName || 'Unknown'}<br>
-    <b>Serial:</b> ${dev.serialNumber || 'N/A'}<br>
-    <b>VID:PID:</b> ${toHex( dev.vendorId, 4)}:${toHex(dev.productId, 4)}<br>
-    <b>DFU Interface:</b> ${dfuInterface}<br>
-    <b>DFU Version:</b> ${toHex(dfuVersion, 4)}<br>
-    <b>wTransferSize:</b> ${dfuTransferSize} bytes<br>
-    <b>bmAttributes:</b> ${toHex(dfuAttributes, 2)} [${attr}]<br>
-    <b>Alt settings:</b>`
-  + memorySegments.map(seg => {
-     const regions = seg.regions.map(r => 
-    `${toHex(r.startAddress)}..${toHex(r.endAddress)} (${r.sectorCount}×${r.sectorSize}B, ${r.readable ? 'R':''}${r.writable ? 'W':''}${r.erasable ? 'E':''})`).join(', ');
-     return `<br> • <b>${seg.name}</b>: ${regions}`;
-    }).join('');
+  deviceInfo.innerHTML = h;
 
   log(`Connected: ${dev.productName || 'Unknown'} (${dev.manufacturerName || 'Unknown'})`, 's');
   log(`Transfer size: ${dfuTransferSize} [${attr}]`, 'i');
@@ -1250,19 +1242,19 @@ function updateUploadRange() {
   }
   const seg = memorySegments[0];
   for (const reg of seg.regions) {
-    if (!reg.readable) continue;
+    if (!reg.r) continue;
     let addr = reg.startAddress;
     const end = reg.endAddress + 1;
     while (addr < end) {
       const optStart = document.createElement('option');
       const optEnd = document.createElement('option');
       optStart.value = addr;
-      optStart.textContent = `${toHex(addr)} (${toSize(reg.sectorSize)})`;
-      optEnd.value = addr + reg.sectorSize;
-      optEnd.textContent = `${toHex(addr + reg.sectorSize - 1)}`;
+      optStart.textContent = `${toHex(addr)} (${toSize(reg.size)})`;
+      optEnd.value = addr + reg.size;
+      optEnd.textContent = `${toHex(addr + reg.size - 1)}`;
       uStart.appendChild(optStart);
       uEnd.appendChild(optEnd);
-     addr += reg.sectorSize;
+     addr += reg.size;
     }
   }
   if (uStart.options.length > 0) uStart.value = uStart.options[0].value;
@@ -1349,6 +1341,19 @@ async function saveAsBin() {
   }
 }
 
+async function copyToClipboard() {
+  if (!firmwareImage) return;
+  const block = firmwareImage.targets[0].blocks[0];
+  try {
+    if (!navigator.clipboard || !navigator.clipboard.write) throw new Error('Clipboard API not supported');
+    const hexString = Array.from(block.data).map(b => b.toString(16).toUpperCase().padStart(2, '0')).join('');
+    await navigator.clipboard.writeText(hexString);
+    log(`Copied ${toSize(block.data.length)} as hex to clipboard`, 's');
+  } catch (err) {
+    log(`Copy error: ${err.message}`, 'e');
+  }
+}
+
 //================================
 // UI and button processing
 //================================
@@ -1389,7 +1394,7 @@ function updateUI() {
 
 // Event listeners
 btnConnect.addEventListener('click', () => {!device ? connectDevice() : disconnectDevice();});
-btnFlash.addEventListener('click', () => {runOperation(btnErase.checked, true, btnVerifyAfter.checked, false, false);});
+btnFlash.addEventListener('click', () => {runOperation(chkErase.checked, true, chkVerify.checked, false, false);});
 btnVerify.addEventListener('click', () => runOperation(false, false, true, false, false));
 btnFile.addEventListener('click', () => fileInput.click());
 
