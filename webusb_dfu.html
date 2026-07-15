@@ -462,10 +462,11 @@ async function waitForState(dev, targetStates, maxAttempts = 200) {
   for (let i = 0; i < maxAttempts; i++) {
     try {
       const s = await dfuGetStatus(dev);
-      if (targetStates.includes(s.bState) && s.bStatus === 0) return s;
-      if (s.bStatus !== 0) await dfuClearStatus(dev);
+      if (s.bStatus !== 0) throw new Error(`DFU Error: ${STATUS_NAMES[s.bStatus] || 'Unknown'} (state: ${s.bState})`);
+      if (targetStates.includes(s.bState)) return s;
       await sleep(Math.max(s.bwPollTimeout, 10));
     } catch (e) {
+      if (e.message.includes('DFU Error')) throw e;
       await sleep(50);
     }
   }
@@ -475,17 +476,16 @@ async function waitForState(dev, targetStates, maxAttempts = 200) {
 const waitForDownloadIdle = dev => waitForState(dev, [2, 5]);
 const waitForUploadIdle = dev => waitForState(dev, [2, 9]);
 const waitForIdle = dev => waitForState(dev, [2, 5, 9]);
-
-async function waitForBusy(dev) {
-  // Wait for dfuDNBUSY / dfuDNLOAD-IDLE / dfuUPLOAD-IDLE
-  let s = await waitForState(dev, [4, 5, 9]);
-  if (s.bState === 4) s = await waitForState(dev, [5, 9]);// If dfuDNBUSY, wait for dfuDNLOAD-IDLE or dfuUPLOAD-IDLE
-//  await sleep(1); // Small delay for stability
-  return s;
-}
+const waitForBusy = dev => waitForState(dev, [5, 9]); // wait for dfuDNLOAD-IDLE or dfuUPLOAD-IDLE;
 
 async function resetToIdle(dev) {
-  await dfuAbort(dev);
+  let s = await dfuGetStatus(dev);
+  for (let i = 0; i < 10 && s.bStatus !== 0; i++) {
+    await dfuClearStatus(dev); // Reset error state
+    await sleep(Math.max(s.bwPollTimeout, 10));
+    s = await dfuGetStatus(dev);
+  }
+  if (s.bState !== 2) await dfuAbort(dev);
   return await waitForIdle(dev);
 }
 
@@ -537,13 +537,13 @@ async function eraseDevice(dev, target) {
       addr = sectorAddr + info.size;
     }
   }
+  if (s.length === 0) { log('  No sectors to erase', 'n'); return; }
   log(`  Erasing ${s.length} sectors`, 's');
   for (let i = 0; i < s.length; i++) {
-//  log(`  Sector @ ${toHex(s[i])}`, 'n');
+//  log(`  Sector ${i}: @ ${toHex(s[i])}`, 'n');
     await dfuseErasePage(dev, s[i]);
     updateProgress(i + 1, s.length);
   }
-  await dfuAbort(dev);
   log('✓ complete', 's', true);
 }
 
@@ -559,7 +559,7 @@ async function programDevice(dev, target, summ) {
     const data = block.data;
     for (let offset = 0, blockNo = 0; offset < data.length; blockNo++) {
       const chunkSize = Math.min(dfuTransferSize, data.length - offset);
-//    log(`  Block ${blockNo} (${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'n');
+//    log(`  Block ${blockNo}: ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'n');
       await dfuDownload(dev, blockNo + 2, data.subarray(offset, offset + chunkSize));
       offset+= chunkSize;
       await waitForBusy(dev);
@@ -584,18 +584,14 @@ async function verifyDevice(dev, target, summ) {
     const readData = new Uint8Array(data.length);
     for (let blockNo = 0, offset = 0; offset < data.length; blockNo++) {
       const chunkSize = Math.min(dfuTransferSize, data.length - offset);
-//    log(`  Block ${blockNo} (reading ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'n');
-      try {
-        const chunk = await dfuUpload(dev, blockNo + 2, chunkSize);
-        if (chunk.length === 0) { log(`Empty response on block ${blockNo}`, 'w'); break; }
-        const copyLen = Math.min(chunk.length, data.length - offset);
-        readData.set(chunk.subarray(0, copyLen), offset);
-        offset += chunk.length;
-        updateProgress(size + offset, summ);
-      } catch (e) {
-        log(`Read error on block ${blockNo}: ${e.message}`, 'e');
-        return false;
-      }
+//    log(`  Block ${blockNo}: ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'n');
+      const chunk = await dfuUpload(dev, blockNo + 2, chunkSize);
+      if (chunk.length === 0) throw new Error(`Empty response from device on block ${blockNo}`);
+      const copyLen = Math.min(chunk.length, data.length - offset);
+      readData.set(chunk.subarray(0, copyLen), offset);
+      offset += chunk.length;
+      await waitForBusy(dev);
+      updateProgress(size + offset, summ);
     }
     size+= data.length;
     data.forEach((v, i) => {if (v !== readData[i]) {mismatch++;if (first === -1) {first = block.address + i; v1 = v; v2 = readData[i];}}});
@@ -616,18 +612,13 @@ async function uploadDevice(dev, target, summ) {
     const data = block.data;
     for (let blockNo = 0, offset = 0; offset < data.length; blockNo++) {
       const chunkSize = Math.min(dfuTransferSize, data.length - offset);
-//    log(`  Block ${blockNo} (reading ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'n');
-      try {
-        const chunk = await dfuUpload(dev, blockNo + 2, chunkSize);
-        if (chunk.length === 0) { log(`Empty response on block ${blockNo}`, 'w'); break; }
-        const copyLen = Math.min(chunk.length, data.length - offset);
-        block.data.set(chunk.subarray(0, copyLen), offset);
-        offset += chunk.length;
-        updateProgress(size + offset, summ);
-      } catch (e) {
-        log(`Read error on block ${blockNo}: ${e.message}`, 'e');
-        return false;
-      }
+//    log(`  Block ${blockNo} ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'n');
+      const chunk = await dfuUpload(dev, blockNo + 2, chunkSize);
+      if (chunk.length === 0) throw new Error(`Empty response from device on block ${blockNo}`);
+      const copyLen = Math.min(chunk.length, data.length - offset);
+      block.data.set(chunk.subarray(0, copyLen), offset);
+      offset += chunk.length;
+      updateProgress(size + offset, summ);
     }
     size+= data.length;
   }
@@ -670,7 +661,7 @@ async function runOperation(doErase, doFlash, doVerify, doUpload, doReset) {
     if (doReset) await sendDeviceReset(device);
   } catch (err) {
     log(`ERROR: ${err.message}`, 'e');
-    try { await dfuClearStatus(device); } catch (e) {}
+    try { await resetToIdle(device); } catch (e) {}
   } finally { // restore disabled UI
     updateUploadSize();
     updateUI();
