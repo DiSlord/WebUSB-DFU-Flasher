@@ -64,6 +64,7 @@ h1 {
 }
 .help-box b { color: var(--btext); }
 .help { display: none; }
+.help.expanded { display: block; }
 .help :is(h2, h3, h4) { margin: 10px 0 0 10px; }
 .help ul{ padding-inline-start: 10px; margin: 0 4px; }
 .help a { color: var(--success); }
@@ -245,7 +246,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
     <div id="progressText" class="progress-text">0%</div>
   </div>
   <div id="logEl" class="log"></div>
-  <div class="info">WebUSB DFU Flasher v2.3 ©️2019-2026 DiSlord (dislordlive@gmail.com)</div>
+  <div class="info">WebUSB DFU Flasher v2.4 ©️2019-2026 DiSlord (dislordlive@gmail.com)</div>
 </div>
 
 <script>
@@ -299,8 +300,7 @@ themeSelect.addEventListener('change', (e) => {applyTheme(parseInt(e.target.valu
 
 <script>
 // DFU 1.1 Commands
-const DFU_DETACH = 0, DFU_DNLOAD = 1, DFU_UPLOAD = 2, DFU_GETSTATUS = 3,
-      DFU_CLRSTATUS = 4, DFU_GETSTATE = 5, DFU_ABORT = 6;
+const DFU_DETACH = 0, DFU_DNLOAD = 1, DFU_UPLOAD = 2, DFU_GETSTATUS = 3, DFU_CLRSTATUS = 4, DFU_GETSTATE = 5, DFU_ABORT = 6;
 
 // DFU States
 const STATE_NAMES = {
@@ -354,14 +354,8 @@ const btnUpload = $('btnUpload');
 const btnDoUpload = $('btnDoUpload');
 const btnSaveBin = $('btnSaveBin');
 
-let device = null;
+let dfu = null;
 let firmwareImage = null;
-let dfuInterface = -1;
-let dfuAttributes = 0;
-let dfuTimeout = 0;
-let dfuTransferSize = 2048;
-let dfuVersion = 0;
-let memorySegments = [];
 
 // Logging
 let lastLogElement = null;
@@ -407,234 +401,351 @@ function parseAddress(str) {
 }
 
 //================================
+// DFUSe class
+//================================
+class dfuDevice {
+  constructor(device) {
+   this.dev = device;
+   this.interface = -1;
+   this.attributes = 0;
+   this.timeout = 0;
+   this.transferSize = 2048;
+   this.version = 0;
+   this.segments = [];
+  }
+
+//================================
 // Low-level USB requests
 //================================
-async function dfuGetDescriptor(dev, id, length) {
-  const r = await dev.controlTransferIn(
-    { requestType: 'standard', recipient: 'device', request: 0x06, value: id, index: 0 }, length);
-  return new Uint8Array(r.data.buffer);
-}
+  async getDescriptor(id, length) {
+    const r = await this.dev.controlTransferIn( { requestType: 'standard', recipient: 'device', request: 0x06, value: id, index: 0 }, length);
+    return new Uint8Array(r.data.buffer);
+  }
 
-async function getStringDescriptor(dev, strIdx) {
-  if (strIdx === 0) return '';
-  const buf = await dfuGetDescriptor(dev, (0x03 << 8) | strIdx, 2048);
-  return new TextDecoder('utf-16le').decode(buf.subarray(2, buf[0]));
-}
+  async getStringDescriptor(strIdx) {
+    if (strIdx === 0) return '';
+    const buf = await this.getDescriptor((0x03 << 8) | strIdx, 2048);
+    return new TextDecoder('utf-16le').decode(buf.subarray(2, buf[0]));
+  }
 
 //================================
 // Low-level DFU requests
 //================================
-async function dfuGetStatus(dev) {
-  const r = await dev.controlTransferIn(
-    { requestType: 'class', recipient: 'interface', request: DFU_GETSTATUS, value: 0, index: dfuInterface }, 6);
-  const d = new Uint8Array(r.data.buffer);
-  return { bStatus: d[0], bwPollTimeout: (d[1] | (d[2] << 8) | (d[3] << 16)), bState: d[4], iString: d[5] };
-}
+  _req(req, v) {
+    return { requestType: 'class', recipient: 'interface', request: req, value: v, index: this.interface };
+  }
 
-async function dfuClearStatus(dev) {
-  await dev.controlTransferOut(
-    { requestType: 'class', recipient: 'interface', request: DFU_CLRSTATUS, value: 0, index: dfuInterface });
-}
+  async getStatus() {
+    const r = await this.dev.controlTransferIn(this._req(DFU_GETSTATUS, 0), 6);
+    const d = new Uint8Array(r.data.buffer);
+    return { bStatus: d[0], bwPollTimeout: (d[1] | (d[2] << 8) | (d[3] << 16)), bState: d[4], iString: d[5] };
+  }
 
-async function dfuDownload(dev, blockNum, data) {
-  await dev.controlTransferOut(
-    { requestType: 'class', recipient: 'interface', request: DFU_DNLOAD, value: blockNum, index: dfuInterface }, data);
-}
+  async clearStatus() {
+    await this.dev.controlTransferOut(this._req(DFU_CLRSTATUS, 0));
+  }
 
-async function dfuUpload(dev, blockNum, length) {
-  const r = await dev.controlTransferIn(
-    { requestType: 'class', recipient: 'interface', request: DFU_UPLOAD, value: blockNum, index: dfuInterface }, length);
-  return new Uint8Array(r.data.buffer);
-}
+  async write(blockNum, data) {
+   await this.dev.controlTransferOut(this._req(DFU_DNLOAD, blockNum), data);
+  }
 
-async function dfuDetach(dev) {
-  await dev.controlTransferOut(
-    { requestType: 'class', recipient: 'interface', request: DFU_DETACH, value: 1000, index: dfuInterface });
-}
+  async read(blockNum, length) {
+    const r = await this.dev.controlTransferIn(this._req(DFU_UPLOAD, blockNum), length);
+    return new Uint8Array(r.data.buffer);
+  }
 
-async function dfuAbort(dev) {
-  await dev.controlTransferOut(
-    { requestType: 'class', recipient: 'interface', request: DFU_ABORT, value: 0, index: dfuInterface });
-}
+  async detach() {
+    await this.dev.controlTransferOut(this._req(DFU_DETACH, 1000));
+  }
 
-// Wait for specific DFU states (dfuIDLE, dfuDNLOAD-IDLE, dfuUPLOAD-IDLE)
-async function waitForState(dev, targetStates, maxAttempts = 200) {
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const s = await dfuGetStatus(dev);
-      if (s.bStatus !== 0) throw new Error(`DFU Error: ${STATUS_NAMES[s.bStatus] || 'Unknown'} (state: ${s.bState})`);
-      if (targetStates.includes(s.bState)) return s;
+  async abort() {
+    await this.dev.controlTransferOut(this._req(DFU_ABORT, 0));
+  }
+
+  // Wait for specific DFU states (dfuIDLE, dfuDNLOAD-IDLE, dfuUPLOAD-IDLE)
+  async waitState(states, timeout = 500) {
+    for (let elapsed = 0, t; elapsed < timeout; elapsed+= t) {
+      try {
+        const s = await this.getStatus();
+        if (s.bStatus !== 0) throw new Error(`DFU Error: ${STATUS_NAMES[s.bStatus] || 'Unknown'} (state: ${s.bState})`);
+        if (states.includes(s.bState)) return s;
+        t = Math.max(s.bwPollTimeout, 10);
+      } catch (e) {
+        if (e.message.includes('DFU Error')) throw e;
+        t = 50;
+      }
+      await sleep(t);
+    }
+    throw new Error(`Timeout (${timeout}ms) waiting for states [${states.join(',')}]`);
+  }
+
+  waitBusy = () => this.waitState([5, 9]);
+  waitIdle = () => this.waitState([2, 5, 9]);
+
+  async resetToIdle() {
+    let s = await this.getStatus();
+    for (let i = 0; i < 10 && s.bStatus !== 0; i++) {
+      await this.clearStatus(); // Reset error state
       await sleep(Math.max(s.bwPollTimeout, 10));
-    } catch (e) {
-      if (e.message.includes('DFU Error')) throw e;
-      await sleep(50);
+      s = await this.getStatus();
+    }
+    if (s.bState !== 2) await this.abort();
+    return await this.waitIdle();
+  }
+
+  //================================
+  // High-level Flash & Upload operations
+  //================================
+  async flash(address, data, progress_cb = null) {
+    await this.setAddress(address);
+    const total = data.length;
+    for (let offset = 0, blockNo = 0; offset < total; blockNo++) {
+      const chunkSize = Math.min(this.transferSize, total - offset);
+      await this.write(blockNo + 2, data.subarray(offset, offset + chunkSize));
+      await this.waitBusy();
+//    log(`  Block ${blockNo}: ${toSize(chunkSize)} @ ${toHex(address + offset)}`, 'n');
+      offset += chunkSize;
+      if (progress_cb) progress_cb(offset, total);
     }
   }
-  throw new Error(`Timeout waiting for states [${targetStates.join(',')}]`);
-}
 
-const waitForDownloadIdle = dev => waitForState(dev, [2, 5]);
-const waitForUploadIdle = dev => waitForState(dev, [2, 9]);
-const waitForIdle = dev => waitForState(dev, [2, 5, 9]);
-const waitForBusy = dev => waitForState(dev, [5, 9]); // wait for dfuDNLOAD-IDLE or dfuUPLOAD-IDLE;
-
-async function resetToIdle(dev) {
-  let s = await dfuGetStatus(dev);
-  for (let i = 0; i < 10 && s.bStatus !== 0; i++) {
-    await dfuClearStatus(dev); // Reset error state
-    await sleep(Math.max(s.bwPollTimeout, 10));
-    s = await dfuGetStatus(dev);
+  async upload(address, buffer, progress_cb = null) {
+    await this.setAddress(address);
+    const total = buffer.length;
+    for (let offset = 0, blockNo = 0; offset < total; blockNo++) {
+      const chunkSize = Math.min(this.transferSize, total - offset);
+      const chunk = await this.read(blockNo + 2, chunkSize);
+      if (chunk.length === 0) throw new Error(`Empty response on block ${blockNo}`);
+      await this.waitBusy();
+//    log(`  Block ${blockNo}: ${toSize(chunkSize)} @ ${toHex(address + offset)}`, 'n');
+      const copyLen = Math.min(chunk.length, total - offset);
+      buffer.set(chunk.subarray(0, copyLen), offset);
+      offset += copyLen;
+      if (progress_cb) progress_cb(offset, total);
+    }
   }
-  if (s.bState !== 2) await dfuAbort(dev);
-  return await waitForIdle(dev);
-}
 
+  async reset() {
+    await this.resetToIdle();
+    await this.write(0, new Uint8Array(0));
+    await this.waitIdle();
+  }
+
+//================================
+// Next functions not pure DFU protocol
 //================================
 // DfuSe high-level commands
 //================================
-async function dfuseCommand(dev, cmd, address) {
-  const addr = new Uint8Array(5);
-  addr[0] = cmd;
-  addr[1] = address & 0xFF;
-  addr[2] = (address >> 8) & 0xFF;
-  addr[3] = (address >> 16) & 0xFF;
-  addr[4] = (address >> 24) & 0xFF;
-  await dfuDownload(dev, 0, addr);
-  await waitForBusy(dev);
-}
-
-async function dfuseSetAddress(dev, address) {
-  await resetToIdle(dev);
-  await dfuseCommand(dev, CMD_SET_ADDRESS, address);
-  await dfuAbort(dev);
-}
-
-async function dfuseErasePage(dev, address) {
-  await dfuseCommand(dev, CMD_ERASE_PAGE, address);
-}
-
-//================================
-// High-level operations
-//================================
-function getSectorInfo(addr) {
-  for (const seg of memorySegments)
-    for (const reg of seg.regions)
-      if (addr >= reg.startAddress && addr <= reg.endAddress)
-        return { size: reg.size, e: reg.e, w: reg.w };
-  return { size: dfuTransferSize, e: false, w: false }; // fallback
-}
-
-async function eraseDevice(dev, target) {
-  // Generate sectors list for erase (depend from device regions)
-  const s = [];
-  const sBlocks = [...target.blocks].sort((a, b) => a.address - b.address);
-  for (const block of sBlocks) {
-    const end = block.address + block.data.length;
-    for (let addr = block.address; addr < end; ) {
-      const info = getSectorInfo(addr);
-      const sectorAddr = Math.floor(addr / info.size) * info.size;
-      if (info.e && !s.includes(sectorAddr)) s.push(sectorAddr); // Allow erase and unique
-      addr = sectorAddr + info.size;
-    }
+  async command(cmd, address) {
+    const addr = new Uint8Array(5);
+    addr[0] = cmd;
+    addr[1] = address & 0xFF;
+    addr[2] = (address >> 8) & 0xFF;
+    addr[3] = (address >> 16) & 0xFF;
+    addr[4] = (address >> 24) & 0xFF;
+    await this.write(0, addr);
+    await this.waitBusy();
   }
+
+  async setAddress(address) {
+    await this.resetToIdle();
+    const s = await this.command(CMD_SET_ADDRESS, address);
+    await this.abort();
+  }
+
+  async erasePage(address) {
+    await this.command(CMD_ERASE_PAGE, address);
+  }
+
+//================================
+// Sector operations
+//================================
+  getSectorInfo(addr) {
+    for (const seg of this.segments)
+      for (const reg of seg.regions)
+        if (addr >= reg.start && addr <= reg.end)
+          return { size: reg.size, e: reg.e, w: reg.w };
+    return { size: this.transferSize, e: false, w: false }; // fallback
+  }
+// Parse memory segment from DfuSe format
+// Expected pattern: "@Name /0xADDR/ sectors"
+//  @Internal Flash  /0x08000000/ 512*2Kg
+//  @Internal Flash /0x08000000/03*016Ka,01*016Kg,01*064Kg,07*128Kg
+//  @Option Byte   /0x1FFFF800/01*048 e
+  parseSegment(name, altSetting) {
+    if (!name || !name.startsWith('@')) return;
+    const parts = name.split('/').filter(s => s.trim() !== '');
+    if (parts.length < 3) return;
+    const segName = parts[0].slice(1).trim();
+    const regions = [];
+    for (let i = 1; i < parts.length - 1; i += 2) {
+      let address = parseInt(parts[i], 16);
+      if (isNaN(address)) continue;
+      const sectors = parts[i + 1].split(',').map(s => s.trim());
+      for (const sec of sectors) {
+        const m = sec.match(/^(\d+)\s*\*\s*(\d+)\s*([KM]?)\s*([a-g])$/i);
+        if (!m) continue;
+        const count = +m[1];
+        const size = +m[2] * ({ K: 1024, M: 1048576 }[m[3].toUpperCase()] || 1);
+        const RWE = 'abcdefg'.indexOf(m[4].toLowerCase()) + 1; // a=1 ... g=7
+        regions.push({
+         start: address,
+         end: (address += count * size) - 1,
+         count: count,
+         size: size,
+         r: (RWE & 1) !== 0, // readable
+         e: (RWE & 2) !== 0, // erasable
+         w: (RWE & 4) !== 0, // writable
+       });
+     }
+    }
+    this.segments.push({ alt: altSetting, str: name, name: segName, regions });
+  }
+
+  // Build unique sector list for erase operation
+  getSectorsList(blocks) {
+    const s = new Set();
+    const sBlocks = [...blocks].sort((a, b) => a.address - b.address);
+    for (const b of sBlocks) {
+      for (let addr = b.address; addr < b.address + b.data.length; ) {
+        const i = this.getSectorInfo(addr);
+        const sAddr = addr - (addr % i.size);
+        if (i.e) s.add(sAddr); // block possible erase
+        addr = sAddr + i.size;
+      }
+    }
+    return Array.from(s);
+  }
+
+//================================
+// Connect / disconnect operations
+//================================
+  async connect() {
+    const buf = await this.getDescriptor((0x02 << 8) | 0, 512); // USB_DT_CONFIGURATION
+    for (let i = 0;i < buf.length && buf[i] > 0; i+= buf[i]) {
+      const bDescriptorType = buf[i + 1];
+      if (bDescriptorType === 0x04) { // DFU Interface Descriptor 
+        const ifaceNum = buf[i + 2];
+        const altSetting = buf[i + 3];
+        const ifaceClass = buf[i + 5];
+        const ifaceSubclass = buf[i + 6];
+        const bInterfaceProtocol = buf[i + 7]; // 2 - DFU, 1 - runtime
+        const iInterface = buf[i + 8]; 
+        if (ifaceClass === 0xFE && ifaceSubclass === 0x01 && bInterfaceProtocol === 0x02) {
+          if (this.interface === -1) this.interface = ifaceNum;
+          if (ifaceNum === this.interface) {
+           this.parseSegment(await this.getStringDescriptor(iInterface), altSetting);
+          }
+        }
+      } else if (bDescriptorType === 0x21) { // DFU Functional Descriptor 
+        this.attributes = buf[i + 2];
+        this.timeout = getU16(buf, i + 3);
+        this.transferSize = getU16(buf, i + 5);
+        this.version = getU16(buf, i + 7);
+      }
+    }
+    if (this.interface === -1) throw new Error('DFU interface not found');
+    await this.dev.claimInterface(this.interface);
+  }
+
+  async close() {
+    try { await this.dev?.close();} catch (e) {};
+    this.segments = [];
+  }
+
+  get canDownload() { return (this.attributes & DFU_CAN_DNLOAD) !== 0; }
+  get canUpload() { return (this.attributes & DFU_CAN_UPLOAD) !== 0; }
+  get isTolerant() { return (this.attributes & DFU_MTOLERANT) !== 0; }
+  get canDetach() { return (this.attributes & DFU_CAN_DETACH) !== 0; }
+};
+
+//================================
+// High-level DFUSe operations
+//================================
+async function eraseDevice(target) {
+  // Generate sectors list for erase (depend from device regions)
+  const s = dfu.getSectorsList(target.blocks);
   if (s.length === 0) { log('  No sectors to erase', 'n'); return; }
   log(`  Erasing ${s.length} sectors`, 's');
-  for (let i = 0; i < s.length; i++) {
-//  log(`  Sector ${i}: @ ${toHex(s[i])}`, 'n');
-    await dfuseErasePage(dev, s[i]);
+  for (const [i, addr] of s.entries()) {
+    await dfu.erasePage(addr);
+//  log(`  Sector ${i}: @ ${toHex(addr)}`, 'n');
     updateProgress(i + 1, s.length);
   }
   log('✓ complete', 's', true);
 }
 
-async function programDevice(dev, target, summ) {
-  if (!(dfuAttributes & DFU_CAN_DNLOAD)) {
+async function programDevice(target, summ) {
+  if (!dfu.canDownload) {
     log('Download not supported. Download skipped.', 'w');
     return true;
   }
   log(`  Flashing ${summ} bytes...`, 's');
   let size = 0;
-  for (const [id, block] of target.blocks.entries()) {
-    await dfuseSetAddress(dev, block.address);
-    const data = block.data;
-    for (let offset = 0, blockNo = 0; offset < data.length; blockNo++) {
-      const chunkSize = Math.min(dfuTransferSize, data.length - offset);
-//    log(`  Block ${blockNo}: ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'n');
-      await dfuDownload(dev, blockNo + 2, data.subarray(offset, offset + chunkSize));
-      offset+= chunkSize;
-      await waitForBusy(dev);
-      updateProgress(size + offset, summ);
-    }
-    size+= data.length;
+  for (const block of target.blocks) {
+    await dfu.flash(block.address, block.data, (offset) => { updateProgress(size + offset, summ); });
+    size += block.data.length;
   }
   log(`✓ complete`, 's', true);
 }
 
-async function verifyDevice(dev, target, summ) {
-  if (!(dfuAttributes & DFU_CAN_UPLOAD)) {
+async function verifyDevice(target, summ) {
+  if (!dfu.canUpload) {
     log('Upload not supported. Verification skipped.', 'w');
     return true;
   }
   log(`  Verifying...`, 's');
-  let size = 0;
+
   let mismatch = 0, first = -1, v1, v2;
-  for (const [id, block] of target.blocks.entries()) {
-    await dfuseSetAddress(dev, block.address);
-    const data = block.data;
-    const readData = new Uint8Array(data.length);
-    for (let blockNo = 0, offset = 0; offset < data.length; blockNo++) {
-      const chunkSize = Math.min(dfuTransferSize, data.length - offset);
-//    log(`  Block ${blockNo}: ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'n');
-      const chunk = await dfuUpload(dev, blockNo + 2, chunkSize);
-      if (chunk.length === 0) throw new Error(`Empty response from device on block ${blockNo}`);
-      const copyLen = Math.min(chunk.length, data.length - offset);
-      readData.set(chunk.subarray(0, copyLen), offset);
-      offset += chunk.length;
-      await waitForBusy(dev);
-      updateProgress(size + offset, summ);
+
+  let size = 0;
+  for (const block of target.blocks) {
+    const readData = new Uint8Array(block.data.length);
+    await dfu.upload(block.address, readData, (offset) => { updateProgress(size + offset, summ); });
+    size += block.data.length;
+    // Compare
+    for (let i = 0; i < block.data.length; i++) {
+      if (block.data[i] !== readData[i]) {
+        mismatch++;
+        if (first === -1) {
+          first = block.address + i;
+          v1 = block.data[i];
+          v2 = readData[i];
+        }
+      }
     }
-    size+= data.length;
-    data.forEach((v, i) => {if (v !== readData[i]) {mismatch++;if (first === -1) {first = block.address + i; v1 = v; v2 = readData[i];}}});
   }
-  if (mismatch === 0) log(`✓ complete`, 's', true);
-  else log(`✗ ${mismatch} mismatches, first at ${toHex(first)}: expected ${toHex(v1,2)}, got ${toHex(v2,2)}`, 'e');
+
+  if (mismatch === 0) {
+    log(`✓ complete`, 's', true);
+    return true;
+  }
+  log(`⚠ ${mismatch} mismatches, first at ${toHex(first)}: expected ${toHex(v1, 2)}, got ${toHex(v2, 2)}`, 'w');
+  return false;
 }
 
-async function uploadDevice(dev, target, summ) {
-  if (!(dfuAttributes & DFU_CAN_UPLOAD)) {
+async function uploadDevice(target, summ) {
+  if (!dfu.canUpload) {
     log('Upload not supported. Upload skipped.', 'w');
     return true;
   }
   log(`  Upload...`, 's');
   let size = 0;
-  for (const [id, block] of target.blocks.entries()) {
-    await dfuseSetAddress(dev, block.address);
-    const data = block.data;
-    for (let blockNo = 0, offset = 0; offset < data.length; blockNo++) {
-      const chunkSize = Math.min(dfuTransferSize, data.length - offset);
-//    log(`  Block ${blockNo} ${toSize(chunkSize)} @ ${toHex(block.address + offset)}`, 'n');
-      const chunk = await dfuUpload(dev, blockNo + 2, chunkSize);
-      if (chunk.length === 0) throw new Error(`Empty response from device on block ${blockNo}`);
-      const copyLen = Math.min(chunk.length, data.length - offset);
-      block.data.set(chunk.subarray(0, copyLen), offset);
-      offset += chunk.length;
-      updateProgress(size + offset, summ);
-    }
-    size+= data.length;
+  for (const block of target.blocks) {
+    await dfu.upload(block.address, block.data, (offset) => { updateProgress(size + offset, summ); });
+    size += block.data.length;
   }
   log(`✓ complete`, 's', true);
 }
 
-async function sendDeviceReset(dev) {
-  await resetToIdle(dev);
-  await dfuDownload(dev, 0, new Uint8Array(0));
-  await waitForBusy(dev);
+async function sendDeviceReset() {
+  await dfu.reset();
   log('Send device reset', 's');
 }
 
 // Main DFU flash operation
 async function runOperation(doErase, doFlash, doVerify, doUpload, doReset) {
-  if (!device || !firmwareImage) {
+  if (!dfu || !firmwareImage) {
     log('Connect device and select file first', 'e');
     return;
   }
@@ -649,19 +760,19 @@ async function runOperation(doErase, doFlash, doVerify, doUpload, doReset) {
         continue;
       }
       // Select Target interface
-      await device.selectAlternateInterface(dfuInterface, target.altSetting);
-      await resetToIdle(device);
+      await dfu.dev.selectAlternateInterface(dfu.interface, target.altSetting);
+      await dfu.resetToIdle();
 
       if (isBin) firmwareImage.updateAddress(targetIdx, parseAddress(flashAddress.value));
-      if (doErase)  await eraseDevice(device, target);
-      if (doFlash)  await programDevice(device, target, summ);
-      if (doVerify) await verifyDevice(device, target, summ);
-      if (doUpload) await uploadDevice(device, target, summ);
+      if (doErase)  await eraseDevice(target);
+      if (doFlash)  await programDevice(target, summ);
+      if (doVerify) await verifyDevice(target, summ);
+      if (doUpload) await uploadDevice(target, summ);
     }
-    if (doReset) await sendDeviceReset(device);
+    if (doReset) await sendDeviceReset();
   } catch (err) {
     log(`ERROR: ${err.message}`, 'e');
-    try { await resetToIdle(device); } catch (e) {}
+    try { await dfu.resetToIdle(); } catch (e) {}
   } finally { // restore disabled UI
     updateUploadSize();
     updateUI();
@@ -672,16 +783,20 @@ async function runOperation(doErase, doFlash, doVerify, doUpload, doReset) {
 // Firmware load
 //================================
 const file_format = [
- {ext: 'bin', name: 'Binary',    parser: parseBinFile},
- {ext: 'dfu', name: 'DFU',       parser: parseDfuFile},
- {ext: 'elf', name: 'Executable and Linkable Format', parser: parseElfFile },
- {ext: 'hex', name: 'Intel HEX', parser: parseHexFile},
- {ext: 'srec',name: 'Motorola S-Record', parser: parseSrecFile },
- {ext: 's19', name: 'Motorola S-Record', parser: parseSrecFile },
- {ext: 's28', name: 'Motorola S-Record', parser: parseSrecFile },
- {ext: 's37', name: 'Motorola S-Record', parser: parseSrecFile }
+  { ext: ['bin'], name: 'Binary', parser: parseBinFile },
+  { ext: ['dfu'], name: 'DFU', parser: parseDfuFile },
+  { ext: ['elf'], name: 'Executable and Linkable Format', parser: parseElfFile },
+  { ext: ['hex'], name: 'Intel HEX', parser: parseHexFile },
+  { ext: ['srec', 's19', 's28', 's37'], name: 'Motorola S-Record', parser: parseSrecFile }
 ];
-function getSupportedExtensions() {return file_format.map(f => f.ext).join(', ');}
+function getSupportedExtensions() {return file_format.flatMap(f => f.ext).join(', ');}
+function getFilePickerTypes() {
+  const allExts = file_format.flatMap(f => f.ext.map(e => '.' + e));
+  return [
+    { description: 'All', accept: { 'application/x-binary': allExts } },
+    ...file_format.map(f => ({ description: f.name, accept: { 'application/x-binary': f.ext.map(e => '.' + e) }}))
+  ];
+}
 
 class FirmwareImage {
   constructor(fname, ext, size) {
@@ -1059,7 +1174,7 @@ async function loadFile(file) {
   const fileName = file.name.toLowerCase();
   const ext = fileName.split('.').pop();
   try {
-    const format = file_format.find(f => f.ext === ext);
+    const format = file_format.find(f => f.ext.includes(ext));
     if (!format) throw new Error(`${ext} - Only: ${getSupportedExtensions()}`);
     const buffer = await file.arrayBuffer();
     const image = new FirmwareImage(fileName, ext, buffer.byteLength);
@@ -1077,105 +1192,35 @@ async function loadFile(file) {
 //================================
 // DFU device Connection
 //================================
-// Parse memory segment from DfuSe format
-// Expected pattern: "@Name /0xADDR/ sectors"
-//  @Internal Flash  /0x08000000/ 512*2Kg
-//  @Internal Flash /0x08000000/03*016Ka,01*016Kg,01*064Kg,07*128Kg
-//  @Option Byte   /0x1FFFF800/01*048 e
-function parseMemorySegment(name, altSetting) {
-  if (!name || !name.startsWith('@')) return null;
-  const parts = name.split('/').filter(s => s.trim() !== '');
-  if (parts.length < 3) return null;
-  const segName = parts[0].slice(1).trim();
-  const regions = [];
-  for (let i = 1; i < parts.length - 1; i += 2) {
-    let address = parseInt(parts[i], 16);
-    if (isNaN(address)) continue;
-    const sectors = parts[i + 1].split(',').map(s => s.trim());
-    for (const sec of sectors) {
-      const m = sec.match(/^(\d+)\s*\*\s*(\d+)\s*([KM]?)\s*([a-g])$/i);
-      if (!m) continue;
-      const count = +m[1];
-      const size = +m[2] * ({ K: 1024, M: 1048576 }[m[3].toUpperCase()] || 1);
-      const RWE = 'abcdefg'.indexOf(m[4].toLowerCase()) + 1; // a=1 ... g=7
-      regions.push({
-       startAddress: address,
-       endAddress: (address += count * size) - 1,
-       sectorCount: count,
-       size: size,
-       r: (RWE & 1) !== 0, // readable
-       e: (RWE & 2) !== 0, // erasable
-       w: (RWE & 4) !== 0, // writable
-     });
-   }
-  }
-  return { alt: altSetting, str: name, name: segName, regions };
-}
-
-async function loadDeviceInfo(dev) {
-  log(`Read device configuration`, 'i');
-  const buf = await dfuGetDescriptor(dev, (0x02 << 8) | 0, 512); // USB_DT_CONFIGURATION
-  for (let i = 0;i < buf.length && buf[i] > 0; i+= buf[i]) {
-    const bDescriptorType = buf[i + 1];
-    if (bDescriptorType === 0x04) { // DFU Interface Descriptor 
-      const ifaceNum = buf[i + 2];
-      const altSetting = buf[i + 3];
-      const ifaceClass = buf[i + 5];
-      const ifaceSubclass = buf[i + 6];
-      const bInterfaceProtocol = buf[i + 7]; // 2 - DFU, 1 - runtime
-      const iInterface = buf[i + 8]; 
-      if (ifaceClass === 0xFE && ifaceSubclass === 0x01 && bInterfaceProtocol === 0x02) {
-        if (dfuInterface === -1) dfuInterface = ifaceNum;
-        if (ifaceNum === dfuInterface) {
-         const seg = parseMemorySegment(await getStringDescriptor(dev, iInterface), altSetting);
-         if (seg) memorySegments.push(seg);
-        }
-      }
-    } else if (bDescriptorType === 0x21) { // DFU Functional Descriptor 
-      dfuAttributes = buf[i + 2];
-      dfuTimeout = getU16(buf, i + 3);
-      dfuTransferSize = getU16(buf, i + 5);
-      dfuVersion = getU16(buf, i + 7);
-    }
-  }
-  if (dfuInterface === -1) throw new Error('DFU interface not found');
-
-  await dev.claimInterface(dfuInterface);
-  log(`DFU interface ${dfuInterface} claimed`, 'i');
-
+function updateDeviceInfo() {
   // Display info
-  const canDownload = (dfuAttributes & DFU_CAN_DNLOAD) !== 0;
-  const canUpload = (dfuAttributes & DFU_CAN_UPLOAD) !== 0;
-  const manifestTolerant = (dfuAttributes & DFU_MTOLERANT) !== 0;
-  const willDetach = (dfuAttributes & DFU_CAN_DETACH) !== 0;
-  const attr = `${canDownload ? 'D' : ''}${canUpload ? 'U' : ''}${manifestTolerant ? 'M' : ''}${willDetach ? 'W' : ''}`;
-  let h = `<b>Manufacturer:</b> ${dev.manufacturerName || 'Unknown'}<br>`;
-  h+= `<b>Device:</b> ${dev.productName || 'Unknown'}<br>`;
-  h+= `<b>Serial:</b> ${dev.serialNumber || 'N/A'}<br>`;
-  h+= `<b>VID:PID:</b> ${toHex( dev.vendorId, 4)}:${toHex(dev.productId, 4)}<br>`;
-  h+= `<b>DFU Interface:</b> ${dfuInterface}<br>`;
-  h+= `<b>DFU Version:</b> ${toHex(dfuVersion, 4)}<br>`;
-  h+= `<b>wTransferSize:</b> ${dfuTransferSize} bytes<br>`;
-  h+= `<b>bmAttributes:</b> ${toHex(dfuAttributes, 2)} [${attr}]<br>`;
+  const a = dfu.attributes;
+  const attr = `${dfu.canDownload ? 'D' : ''}${dfu.canUpload ? 'U' : ''}${dfu.isTolerant ? 'M' : ''}${dfu.canDetach ? 'W' : ''}`;
+  const pName = dfu.dev.productName || 'Unknown';
+  const mName = dfu.dev.manufacturerName || 'Unknown';
+  const serial = dfu.dev.serialNumber || 'N/A'
+  let h = `<b>Manufacturer:</b> ${mName}<br>`;
+  h+= `<b>Device:</b> ${pName}<br>`;
+  h+= `<b>Serial:</b> ${serial}<br>`;
+  h+= `<b>VID:PID:</b> ${toHex(dfu.dev.vendorId, 4)}:${toHex(dfu.dev.productId, 4)}<br>`;
+  h+= `<b>DFU Interface:</b> ${dfu.interface}<br>`;
+  h+= `<b>DFU Version:</b> ${toHex(dfu.version, 4)}<br>`;
+  h+= `<b>wTransferSize:</b> ${dfu.transferSize} bytes<br>`;
+  h+= `<b>bmAttributes:</b> ${toHex(a, 2)} [${attr}]<br>`;
   h+= `<b>Alt settings:</b>`;
-  for (const seg of memorySegments) {
+  for (const seg of dfu.segments) {
     const sep = seg.regions.length > 1 ? '<br>   ' : ' ';
     const lines = seg.regions.map(b => {
       const flags = `${b.r ? 'R' : ''}${b.w ? 'W' : ''}${b.e ? 'E' : ''}` || '-';
-      return `${toHex(b.startAddress)}..${toHex(b.endAddress)} (${b.sectorCount}×${toSize(b.size)}, ${flags})`;
+      return `${toHex(b.start)}..${toHex(b.end)} (${b.count}×${toSize(b.size)}, ${flags})`;
     });
     h+= `<br> • <b>${seg.name}</b>:${sep}${lines.join(sep)}`;
   }
   deviceInfo.style.display = 'block';
   deviceInfo.innerHTML = h;
 
-  log(`Connected: ${dev.productName || 'Unknown'} (${dev.manufacturerName || 'Unknown'})`, 's');
-  log(`Transfer size: ${dfuTransferSize} [${attr}]`, 'i');
-
-  // Check initial state
-  const st = await resetToIdle(dev);
-  log(`Initial state: ${STATE_NAMES[st.bState]}(${st.bState}), status: ${STATUS_NAMES[st.bStatus]}`, 'i');
-  log('Device ready', 's');
+  log(`Connected: ${pName} (${mName})`, 's');
+  log(`Transfer size: ${dfu.transferSize} [${attr}]`, 'i');
 }
 
 async function connectDevice() {
@@ -1188,23 +1233,26 @@ async function connectDevice() {
    { vendorId: 0x303a }, // ESP32-S2/S3
    { vendorId: 0x1a86 }  // WCH
   ];
-  // Reset data
-  dfuInterface = -1;
-  dfuAttributes = 0;
-  dfuTimeout = 0;
-  dfuTransferSize = 2048;
-  dfuVersion = 0;
-  memorySegments = [];
 
   try {
     if (!navigator.usb) throw new Error('WebUSB not supported in this browser');
-    device = await navigator.usb.requestDevice({ filters });
+    const device = await navigator.usb.requestDevice({ filters });
     await device.open();
     if (device.configuration === null) await device.selectConfiguration(1);
-    await loadDeviceInfo(device);
+
+    dfu = new dfuDevice(device);
+    log(`Read device configuration`, 'i');
+    await dfu.connect();
+    log(`DFU interface ${dfu.interface} claimed`, 'i');
+    updateDeviceInfo();
+
+    // Check initial state
+    const st = await dfu.resetToIdle();
+    log(`Initial state: ${STATE_NAMES[st.bState]}(${st.bState}), status: ${STATUS_NAMES[st.bStatus]}`, 'i');
+    log('Device ready', 's');
   } catch (err) {
     log(`Connect Error: ${err.message}`, 'e');
-    device = null;
+    dfu = null;
   } finally {
     updateUploadRange();
     updateUI();
@@ -1213,8 +1261,8 @@ async function connectDevice() {
 
 async function disconnectDevice() {
   log('Device disconnected', 'w');
-  try { await device?.close();} catch (e) {};
-  device = null;
+  await dfu?.close();
+  dfu = null;
   updateUploadRange();
   updateUI();
 }
@@ -1225,31 +1273,25 @@ async function disconnectDevice() {
 function updateUploadRange() {
   uStart.innerHTML = '';
   uEnd.innerHTML = '';
-  if (!device || memorySegments.length === 0) {
+  if (!dfu || dfu.segments.length === 0) {
     btnDoUpload.disabled = true;
     uEnd.innerHTML = uStart.innerHTML = '<option>No device</option>';
     uTotalSize.textContent = 'N/A';
     return;
   }
-  const seg = memorySegments[0];
-  for (const reg of seg.regions) {
+  const { regions } = dfu.segments[0];
+  for (const reg of regions) {
     if (!reg.r) continue;
-    let addr = reg.startAddress;
-    const end = reg.endAddress + 1;
-    while (addr < end) {
-      const optStart = document.createElement('option');
-      const optEnd = document.createElement('option');
-      optStart.value = addr;
-      optStart.textContent = `${toHex(addr)} (${toSize(reg.size)})`;
-      optEnd.value = addr + reg.size;
-      optEnd.textContent = `${toHex(addr + reg.size - 1)}`;
-      uStart.appendChild(optStart);
-      uEnd.appendChild(optEnd);
-     addr += reg.size;
+    const { start, end, size } = reg;
+    for (let addr = start; addr <= end; addr += size) {
+      uStart.appendChild(new Option(`${toHex(addr)} (${toSize(size)})`, addr));
+      uEnd.appendChild(new Option(toHex(addr + size - 1), addr + size));
     }
   }
-  if (uStart.options.length > 0) uStart.value = uStart.options[0].value;
-  if (uEnd.options.length > 0) uEnd.value = uEnd.options[uEnd.options.length - 1].value;
+  if (uStart.options.length > 0) {
+    uStart.selectedIndex = 0;
+    uEnd.selectedIndex = uEnd.options.length - 1;
+  }
   updateUploadSize();
 }
 
@@ -1263,8 +1305,8 @@ function updateUploadSize() {
 }
 
 async function doUpload() {
-  if (!device) return;
-  if (!(dfuAttributes & 0x02)) {
+  if (!dfu) return;
+  if (!dfu.canUpload) {
     log('Upload not supported by device', 'e');
     return;
   }
@@ -1295,7 +1337,7 @@ async function doUpload() {
 // Save data to file functions
 //================================
 async function uploadFile(data, name) {
-  const blob = new Blob([data], { type: 'application/octet-stream' });
+  const blob = new Blob([data], { type: 'application/x-binary' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -1310,11 +1352,11 @@ async function uploadFile(data, name) {
 async function saveFile(data, name, desc, ext) {
   try {
     if (!('showSaveFilePicker' in window)) return await uploadFile(data, name);
-    const handle = await window.showSaveFilePicker({suggestedName: name, types: [{description: desc, accept: { 'application/x-binary': ext }}]});
+    const handle = await window.showSaveFilePicker({suggestedName: name, types: [{description: desc, accept: { 'application/x-binary': ext }}], excludeAcceptAllOption: true});
     const writable = await handle.createWritable();
     await writable.write(data);
     await writable.close();
-     return handle.name;
+    return handle.name;
   } catch (err) {
     if (err.name !== 'AbortError') throw err;
     return null;
@@ -1345,6 +1387,17 @@ async function copyToClipboard() {
   }
 }
 
+async function selectAndLoadFile() {
+  try {
+    if (!('showOpenFilePicker' in window)) { fileInput.click(); return; }
+    const [file] = await window.showOpenFilePicker({ types: getFilePickerTypes(), excludeAcceptAllOption: true });
+    loadFile(await file.getFile());
+  } catch (err) {
+    if (err.name !== 'AbortError') log(`Open file: ${err.message}`, 'e');
+    return;
+  }
+}
+
 //================================
 // UI and button processing
 //================================
@@ -1361,7 +1414,7 @@ function disableUI() {
 
 // UI depends on state
 function updateUI() {
-  const state = !device || !firmwareImage;
+  const state = !dfu || !firmwareImage;
   btnFlash.disabled = state;
   btnVerify.disabled = state;
 
@@ -1371,9 +1424,9 @@ function updateUI() {
   btnUpload.ariaPressed = uPanelShow;
 
   btnConnect.disabled = false;
-  btnConnect.textContent = !!device ? 'Disconnect' : 'Connect to Device';
-  btnConnect.ariaPressed = !!device;
-  deviceInfo.style.display = !!device ? '' : 'none';
+  btnConnect.textContent = !!dfu ? 'Disconnect' : 'Connect to Device';
+  btnConnect.ariaPressed = !!dfu;
+  deviceInfo.style.display = !!dfu ? '' : 'none';
 
   btnFile.disabled = false;
   btnFile.textContent = firmwareImage ? `${firmwareImage.fileName} (${toSize(firmwareImage.fileSize)})` : `Select ${getSupportedExtensions()} file`;
@@ -1384,12 +1437,13 @@ function updateUI() {
 }
 
 // Event listeners
-btnConnect.addEventListener('click', () => {!device ? connectDevice() : disconnectDevice();});
+btnConnect.addEventListener('click', () => {!dfu ? connectDevice() : disconnectDevice();});
 btnFlash.addEventListener('click', () => {runOperation(chkErase.checked, true, chkVerify.checked, false, false);});
 btnVerify.addEventListener('click', () => runOperation(false, false, true, false, false));
-btnFile.addEventListener('click', () => fileInput.click());
 
-fileInput.setAttribute('accept', file_format.map(f => `.${f.ext}`).join(','));
+// File select dialog
+btnFile.addEventListener('click', selectAndLoadFile);
+fileInput.setAttribute('accept', file_format.flatMap(f => f.ext.map(e => `.${e}`)).join(','));
 fileInput.addEventListener('change', (e) => {loadFile(e.target.files[0]); fileInput.value = '';});
 
 btnUpload.addEventListener('click', () => {uPanelShow = !uPanelShow; updateUI();});
@@ -1401,13 +1455,6 @@ uEnd.addEventListener('change', updateUploadSize);
 // Drag & drop support
 document.addEventListener('dragover', e => e.preventDefault());
 document.addEventListener('drop', async e => {e.preventDefault(); loadFile(e.dataTransfer.files[0]);});
-
-// Display/hide help content on click
-helpBox.addEventListener('click', () => {
-  const expanded = helpBox.classList.toggle('expanded');
-  if (expanded && !helpBox.contains(helpContent)) helpBox.appendChild(helpContent);
-  helpContent.style.display = expanded ? 'block' : 'none';
-});
 
 // Filter HEX input only [0-9, a-f, A-F] and hold cursor position
 flashAddress.addEventListener('input', () => {
@@ -1422,7 +1469,7 @@ flashAddress.addEventListener('input', () => {
 
 // Startup code
 if (navigator.usb) {
-  navigator.usb.addEventListener('disconnect', async (e) => {if (e.device === device) disconnectDevice();});
+  navigator.usb.addEventListener('disconnect', async (e) => {if (e.device === dfu?.dev) disconnectDevice();});
   log('Waiting for device connection in DFU mode.', 's');
 } else
  log('WebUSB not supported in this browser', 'e');
@@ -1441,6 +1488,7 @@ updateUploadRange();
  <li><b>Put your device in DFU mode:</b> Hold button and power on (or short BOOT0=HIGH  on PCB)</li>
  <li><b>Connect Device:</b> click "Connect to Device" and select DFU device from the dialog</li>
 </ul>
+
 <h4>Flash / Verify operation</h4>
 <ul>
  <li><b>Load Firmware:</b> Select or drag & drop a firmware file (.bin, .dfu, .elf, .hex, .srec)</li>
@@ -1453,6 +1501,7 @@ updateUploadRange();
  <li><b>Flash:</b> Click "Flash" to start the programming process</li>
  <li><b>Verify:</b> Click "Verify Only" to check existing firmware without reprogramming</li>
 </ul>
+
 <h4>Upload operation</h4>
 <ul>
  <li><b>Open Upload Panel:</b> Click "Upload from Device" button</li>
@@ -1569,6 +1618,11 @@ updateUploadRange();
  </li>
 </ul>
 </div>
+<script>
+// Display/hide help content on click
+helpBox.appendChild(helpContent);
+helpBox.addEventListener('click', () => { helpContent.classList.toggle('expanded'); });
+</script>
 
 </body>
 </html>
